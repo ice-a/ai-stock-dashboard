@@ -292,7 +292,7 @@ function onFileSelected(e: Event) {
 
     <section class="card section">
       <h2>数据源健康度</h2>
-      <p class="small muted">系统按 长桥 Longbridge → 东方财富 → 新浪 → Yahoo → 静态快照 顺序回退。部署到 Vercel 时请配置 <code>LONGBRIDGE_APP_KEY</code>、<code>LONGBRIDGE_APP_SECRET</code>、<code>LONGBRIDGE_ACCESS_TOKEN</code>。</p>
+      <p class="small muted">系统按 长桥兼容入口 → 东方财富 → 新浪 → Yahoo → 静态快照 顺序回退。Vercel 版本不打包 Longbridge 官方 Node SDK，避免超过 Serverless Function 体积限制。</p>
       <div class="source-list">
         <div v-for="s in sources" :key="s.id" class="source-row">
           <div class="src-name">

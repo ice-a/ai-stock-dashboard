@@ -1,24 +1,23 @@
 # AI Stock Dashboard
 
-面向个人研究和持仓跟踪的股票看板。项目以 Vue 3 + Vite 构建，行情优先走 Longbridge/长桥服务端接口，并提供自定义单股查询、热门股票、个人持仓盈亏、AI 研究助手和站点密码保护。
+面向个人研究和持仓跟踪的股票看板。项目以 Vue 3 + Vite 构建，提供多源行情降级、自定义单股查询、热门股票、个人持仓盈亏、AI 研究助手和站点密码保护。
 
 ## 功能概览
 
-- **准确行情优先**：Longbridge Node SDK 服务端代理优先，失败后自动回退东方财富、Sina、Yahoo 和静态快照。
-- **服务端密钥**：长桥、AI 和访问密码都从服务端环境变量读取，不把敏感配置打进前端包。
+- **多源行情降级**：按长桥兼容入口、东方财富、Sina、Yahoo 和静态快照顺序尝试，单个数据源失败不会阻塞页面。
+- **服务端密钥**：AI 和访问密码都从服务端环境变量读取，不把敏感配置打进前端包。
 - **站点密码保护**：设置 `SITE_PASSWORD` 后，Vercel Middleware 会在访问网站前要求登录；登录态使用 HttpOnly Cookie。
 - **单股查询**：左侧菜单「自定义查询」，支持名称/代码搜索、标准代码直达、热门股票报价。
 - **个人持仓**：记录股票、买入价、手续费、购买日期和数量，自动计算成本、市值、浮动盈亏和收益率。
 - **AI 研究助手**：支持 OpenAI 兼容接口，既可本地配置，也可通过服务端 `AI_*` 环境变量托管 API Key。
 - **研究板块与自选股**：内置 AI、半导体、新能源、生物科技等板块，支持自选备注、目标价和详情页 K 线。
-- **适配 Vercel**：包含 API Routes、Middleware、Vite 构建配置和 Longbridge 原生依赖安装配置。
+- **适配 Vercel**：包含 API Routes、Middleware、Vite 构建配置，并移除了超出 Vercel 函数体积限制的 Longbridge 原生依赖。
 
 ## 技术栈
 
 - Vue 3.5, Vite 6, TypeScript 5.7
 - Vue Router, Pinia, vue-i18n
 - ECharts, vue-echarts
-- Longbridge OpenAPI Node SDK（服务端懒加载）
 - Vercel API Routes + Middleware
 
 ## 快速开始
@@ -59,12 +58,12 @@ npm run preview
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `LONGBRIDGE_APP_KEY` | 是 | Longbridge App Key |
-| `LONGBRIDGE_APP_SECRET` | 是 | Longbridge App Secret |
-| `LONGBRIDGE_ACCESS_TOKEN` | 是 | Longbridge Access Token |
+| `LONGBRIDGE_APP_KEY` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
+| `LONGBRIDGE_APP_SECRET` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
+| `LONGBRIDGE_ACCESS_TOKEN` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
 | `LONGBRIDGE_HTTP_URL` | 否 | 默认 `https://openapi.longbridge.com` |
 
-兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。
+兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。当前 Vercel 版本不会安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
 
 ### AI 服务端托管
 
@@ -90,10 +89,10 @@ npm run preview
 1. Fork 或推送本仓库到 GitHub。
 2. 在 Vercel 导入项目。
 3. Framework 选择 Vite，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
-4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`、`LONGBRIDGE_*`，以及可选 `AI_*`。
+4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`，以及可选 `AI_*`。
 5. 部署后访问站点，会先进入 `/login`。
 
-项目已在 `package.json` 中指定 Node 22，并在 `vercel.json` 中使用 `npm install --include=optional`。Longbridge SDK 只会在服务端 API 被调用时懒加载，避免 Vite 构建配置加载阶段触发原生 binding。
+项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 保持轻量兼容接口，不打包 Longbridge 官方 Node SDK；当前端请求长桥失败时，会自动降级到东方财富、Sina、Yahoo 和静态快照。
 
 ## API Routes
 
@@ -103,9 +102,9 @@ npm run preview
 | `/api/auth/login` | 校验 `SITE_PASSWORD`，写入 HttpOnly Cookie |
 | `/api/auth/logout` | 清除登录 Cookie |
 | `/api/config` | 返回非敏感运行时配置 |
-| `/api/longbridge/status` | 检查长桥环境变量是否配置 |
-| `/api/longbridge/quotes` | 批量查询报价 |
-| `/api/longbridge/candlesticks` | 查询 K 线 |
+| `/api/longbridge/status` | 返回长桥兼容入口状态和禁用原因 |
+| `/api/longbridge/quotes` | 长桥报价兼容入口，Vercel 版本返回可诊断错误并触发前端降级 |
+| `/api/longbridge/candlesticks` | 长桥 K 线兼容入口，Vercel 版本返回可诊断错误并触发前端降级 |
 | `/api/ai/models` | 服务端托管 AI 模型列表 |
 | `/api/ai/chat` | 服务端托管非流式 Chat |
 | `/api/ai/chat-stream` | 服务端托管流式 Chat |
@@ -132,7 +131,7 @@ vercel.json           # Vercel 构建与缓存配置
 
 ## 数据说明
 
-- 实时/准实时行情来自 Longbridge、东方财富、Sina、Yahoo 等数据源。
+- Vercel 版本的实时/准实时行情来自东方财富、Sina、Yahoo 等数据源；长桥官方 Node SDK 因原生包体积限制暂不打包。
 - AI 输出仅作研究辅助，不构成投资建议。
 - 个人持仓数据保存在浏览器 `localStorage`，不会上传到服务端。
 
