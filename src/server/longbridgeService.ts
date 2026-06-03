@@ -1,5 +1,3 @@
-import Longbridge from 'longbridge'
-
 export interface LongbridgeQuoteDto {
   symbol: string
   lastDone: string
@@ -26,9 +24,14 @@ export interface LongbridgeCandlestickDto {
 export interface LongbridgeStatusDto {
   configured: boolean
   host: string
+  sdkLoaded: boolean
 }
 
-let quoteContext: ReturnType<typeof Longbridge.QuoteContext.new> | null = null
+type LongbridgeSdk = typeof import('longbridge')
+type QuoteContext = ReturnType<LongbridgeSdk['QuoteContext']['new']>
+
+let longbridgeSdk: LongbridgeSdk | null = null
+let quoteContext: QuoteContext | null = null
 let contextKey = ''
 
 function readEnv(name: string): string {
@@ -47,10 +50,18 @@ export function getLongbridgeStatus(): LongbridgeStatusDto {
   return {
     configured: Boolean(creds.appKey && creds.appSecret && creds.accessToken),
     host: readEnv('LONGBRIDGE_HTTP_URL') || 'https://openapi.longbridge.com',
+    sdkLoaded: Boolean(longbridgeSdk),
   }
 }
 
-function getQuoteContext(): ReturnType<typeof Longbridge.QuoteContext.new> {
+async function loadLongbridgeSdk(): Promise<LongbridgeSdk> {
+  if (longbridgeSdk) return longbridgeSdk
+  const mod = await import('longbridge')
+  longbridgeSdk = (mod.default || mod) as LongbridgeSdk
+  return longbridgeSdk
+}
+
+async function getQuoteContext(): Promise<QuoteContext> {
   const creds = getCredentials()
   if (!creds.appKey || !creds.appSecret || !creds.accessToken) {
     throw new Error('Longbridge is not configured. Set LONGBRIDGE_APP_KEY, LONGBRIDGE_APP_SECRET and LONGBRIDGE_ACCESS_TOKEN.')
@@ -59,6 +70,7 @@ function getQuoteContext(): ReturnType<typeof Longbridge.QuoteContext.new> {
   const key = `${creds.appKey}:${creds.accessToken.slice(0, 16)}:${readEnv('LONGBRIDGE_HTTP_URL')}`
   if (quoteContext && contextKey === key) return quoteContext
 
+  const Longbridge = await loadLongbridgeSdk()
   const config = Longbridge.Config.fromApikey(creds.appKey, creds.appSecret, creds.accessToken, {
     httpUrl: readEnv('LONGBRIDGE_HTTP_URL') || undefined,
     language: 0,
@@ -125,7 +137,7 @@ function mapPeriod(period: string | null | undefined): number {
 export async function getLongbridgeQuotes(symbols: string[]): Promise<LongbridgeQuoteDto[]> {
   const cleanSymbols = symbols.map(s => s.trim().toUpperCase()).filter(Boolean)
   if (cleanSymbols.length === 0) return []
-  const ctx = getQuoteContext()
+  const ctx = await getQuoteContext()
   const rows = await ctx.quote(cleanSymbols)
   return rows.map(quoteToDto)
 }
@@ -133,7 +145,7 @@ export async function getLongbridgeQuotes(symbols: string[]): Promise<Longbridge
 export async function getLongbridgeCandlesticks(symbol: string, period = 'day', count = 200): Promise<LongbridgeCandlestickDto[]> {
   const cleanSymbol = symbol.trim().toUpperCase()
   if (!cleanSymbol) return []
-  const ctx = getQuoteContext()
+  const ctx = await getQuoteContext()
   const rows = await ctx.candlesticks(
     cleanSymbol,
     mapPeriod(period) as any,

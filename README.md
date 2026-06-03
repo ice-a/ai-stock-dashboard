@@ -11,14 +11,14 @@
 - **个人持仓**：记录股票、买入价、手续费、购买日期和数量，自动计算成本、市值、浮动盈亏和收益率。
 - **AI 研究助手**：支持 OpenAI 兼容接口，既可本地配置，也可通过服务端 `AI_*` 环境变量托管 API Key。
 - **研究板块与自选股**：内置 AI、半导体、新能源、生物科技等板块，支持自选备注、目标价和详情页 K 线。
-- **适配 Vercel**：包含 API Routes、Middleware 和 Vite 构建配置。
+- **适配 Vercel**：包含 API Routes、Middleware、Vite 构建配置和 Longbridge 原生依赖安装配置。
 
 ## 技术栈
 
 - Vue 3.5, Vite 6, TypeScript 5.7
 - Vue Router, Pinia, vue-i18n
 - ECharts, vue-echarts
-- Longbridge OpenAPI Node SDK
+- Longbridge OpenAPI Node SDK（服务端懒加载）
 - Vercel API Routes + Middleware
 
 ## 快速开始
@@ -92,6 +92,8 @@ npm run preview
 3. Framework 选择 Vite，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
 4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`、`LONGBRIDGE_*`，以及可选 `AI_*`。
 5. 部署后访问站点，会先进入 `/login`。
+
+项目已在 `package.json` 中指定 Node 22，并在 `vercel.json` 中使用 `npm install --include=optional`。Longbridge SDK 只会在服务端 API 被调用时懒加载，避免 Vite 构建配置加载阶段触发原生 binding。
 
 ## API Routes
 
