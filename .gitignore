@@ -1,0 +1,34 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.vscode/
+.idea/
+*.log
+.env
+.env.local
+.env.*.local
+tsconfig.tsbuildinfo
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# Worker
+workers/.wrangler/
+workers/node_modules/
+workers/dist/
+
+# Vercel
+.vercel
+
+# PWA 图标（用 scripts/generate-pwa-icons.mjs 生成）
+public/pwa-*.png
+public/apple-touch-icon.png
+public/favicon-32.png
+
+# config
+.ccg
+.claude

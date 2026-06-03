@@ -1,0 +1,139 @@
+# AI Stock Dashboard
+
+面向个人研究和持仓跟踪的股票看板。项目以 Vue 3 + Vite 构建，行情优先走 Longbridge/长桥服务端接口，并提供自定义单股查询、热门股票、个人持仓盈亏、AI 研究助手和站点密码保护。
+
+## 功能概览
+
+- **准确行情优先**：Longbridge Node SDK 服务端代理优先，失败后自动回退东方财富、Sina、Yahoo 和静态快照。
+- **服务端密钥**：长桥、AI 和访问密码都从服务端环境变量读取，不把敏感配置打进前端包。
+- **站点密码保护**：设置 `SITE_PASSWORD` 后，Vercel Middleware 会在访问网站前要求登录；登录态使用 HttpOnly Cookie。
+- **单股查询**：左侧菜单「自定义查询」，支持名称/代码搜索、标准代码直达、热门股票报价。
+- **个人持仓**：记录股票、买入价、手续费、购买日期和数量，自动计算成本、市值、浮动盈亏和收益率。
+- **AI 研究助手**：支持 OpenAI 兼容接口，既可本地配置，也可通过服务端 `AI_*` 环境变量托管 API Key。
+- **研究板块与自选股**：内置 AI、半导体、新能源、生物科技等板块，支持自选备注、目标价和详情页 K 线。
+- **适配 Vercel**：包含 API Routes、Middleware 和 Vite 构建配置。
+
+## 技术栈
+
+- Vue 3.5, Vite 6, TypeScript 5.7
+- Vue Router, Pinia, vue-i18n
+- ECharts, vue-echarts
+- Longbridge OpenAPI Node SDK
+- Vercel API Routes + Middleware
+
+## 快速开始
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+默认开发地址：
+
+```text
+http://localhost:5173
+```
+
+常用命令：
+
+```bash
+npm run typecheck
+npm run build
+npm run preview
+```
+
+## 环境变量
+
+`.env.example` 包含完整模板。生产部署建议在 Vercel Project Settings 中配置，不要提交真实 `.env`。
+
+### 站点访问控制
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `SITE_PASSWORD` | 推荐 | 网站访问密码。为空时关闭密码保护 |
+| `SITE_AUTH_SECRET` | 推荐 | Cookie 签名密钥。为空时使用 `SITE_PASSWORD` |
+| `SITE_AUTH_MAX_AGE_SECONDS` | 否 | 登录有效期，默认 `604800` |
+
+### 长桥行情
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `LONGBRIDGE_APP_KEY` | 是 | Longbridge App Key |
+| `LONGBRIDGE_APP_SECRET` | 是 | Longbridge App Secret |
+| `LONGBRIDGE_ACCESS_TOKEN` | 是 | Longbridge Access Token |
+| `LONGBRIDGE_HTTP_URL` | 否 | 默认 `https://openapi.longbridge.com` |
+
+兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。
+
+### AI 服务端托管
+
+| 变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `AI_BASE_URL` | 否 | OpenAI 兼容接口地址，默认 `https://api.openai.com/v1` |
+| `AI_API_KEY` | 可选 | 配置后前端不需要保存 API Key |
+| `AI_MODEL` | 可选 | 默认模型 |
+| `AI_TEMPERATURE` | 否 | 默认 `0.7` |
+| `AI_MAX_TOKENS` | 否 | 默认 `2000` |
+
+也兼容 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`。
+
+### 应用默认值
+
+| 变量 | 说明 |
+| --- | --- |
+| `APP_LIST_REFRESH_SECONDS` | 列表行情刷新间隔 |
+| `APP_DETAIL_REFRESH_SECONDS` | 详情页刷新间隔 |
+
+## Vercel 部署
+
+1. Fork 或推送本仓库到 GitHub。
+2. 在 Vercel 导入项目。
+3. Framework 选择 Vite，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
+4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`、`LONGBRIDGE_*`，以及可选 `AI_*`。
+5. 部署后访问站点，会先进入 `/login`。
+
+## API Routes
+
+| 路径 | 说明 |
+| --- | --- |
+| `/api/auth/status` | 返回密码保护状态和当前 Cookie 登录状态 |
+| `/api/auth/login` | 校验 `SITE_PASSWORD`，写入 HttpOnly Cookie |
+| `/api/auth/logout` | 清除登录 Cookie |
+| `/api/config` | 返回非敏感运行时配置 |
+| `/api/longbridge/status` | 检查长桥环境变量是否配置 |
+| `/api/longbridge/quotes` | 批量查询报价 |
+| `/api/longbridge/candlesticks` | 查询 K 线 |
+| `/api/ai/models` | 服务端托管 AI 模型列表 |
+| `/api/ai/chat` | 服务端托管非流式 Chat |
+| `/api/ai/chat-stream` | 服务端托管流式 Chat |
+
+## 项目结构
+
+```text
+api/
+  ai/                 # 服务端 AI 代理
+  auth/               # 登录、登出、状态
+  longbridge/         # 长桥行情 API
+src/
+  api/                # 前端 API 客户端和数据源调度
+  components/         # 通用组件
+  data/               # 热门股票、静态兜底数据
+  router/             # 路由
+  server/             # 服务端共享逻辑：认证、长桥、AI、运行时配置
+  stores/             # Pinia stores
+  styles/             # 设计变量和全局样式
+  views/              # 页面
+middleware.ts         # Vercel 访问控制
+vercel.json           # Vercel 构建与缓存配置
+```
+
+## 数据说明
+
+- 实时/准实时行情来自 Longbridge、东方财富、Sina、Yahoo 等数据源。
+- AI 输出仅作研究辅助，不构成投资建议。
+- 个人持仓数据保存在浏览器 `localStorage`，不会上传到服务端。
+
+## License
+
+仅作个人研究工具使用，不构成投资建议。
