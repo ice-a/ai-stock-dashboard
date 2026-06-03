@@ -1,5 +1,3 @@
-import { getAuthCookieName, isAuthEnabled, verifySessionToken } from './src/server/auth.ts'
-
 const PUBLIC_PATHS = new Set([
   '/login',
   '/favicon.svg',
@@ -17,6 +15,44 @@ function shouldBypass(pathname: string): boolean {
   return false
 }
 
+const encoder = new TextEncoder()
+const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
+
+function getAuthCookieName(): string {
+  return process.env.SITE_AUTH_COOKIE_NAME?.trim() || AUTH_COOKIE_DEFAULT
+}
+
+function getSitePassword(): string {
+  return process.env.SITE_PASSWORD?.trim() || process.env.APP_PASSWORD?.trim() || ''
+}
+
+function isAuthEnabled(): boolean {
+  return Boolean(getSitePassword())
+}
+
+function getAuthSecret(): string {
+  return process.env.SITE_AUTH_SECRET?.trim() || getSitePassword()
+}
+
+async function hmacHex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message))
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 function readCookie(header: string | null, name: string): string | null {
   if (!header) return null
   for (const part of header.split(';')) {
@@ -24,6 +60,19 @@ function readCookie(header: string | null, name: string): string | null {
     if (rawKey === name) return decodeURIComponent(rest.join('='))
   }
   return null
+}
+
+async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
+  if (!isAuthEnabled()) return true
+  if (!token) return false
+  const parts = token.split('.')
+  if (parts.length !== 3) return false
+  const [expiresRaw, nonce, signature] = parts
+  const expiresAt = Number(expiresRaw)
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false
+  if (!nonce || nonce.length < 16) return false
+  const expected = await hmacHex(getAuthSecret(), `${expiresRaw}.${nonce}`)
+  return constantTimeEqual(signature, expected)
 }
 
 export default async function middleware(request: Request): Promise<Response | void> {
