@@ -1,6 +1,6 @@
-export const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
-const encoder = new TextEncoder()
+export const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
 
 export function getAuthCookieName(): string {
   return process.env.SITE_AUTH_COOKIE_NAME?.trim() || AUTH_COOKIE_DEFAULT
@@ -24,41 +24,27 @@ function getAuthSecret(): string {
   return process.env.SITE_AUTH_SECRET?.trim() || getSitePassword()
 }
 
-async function hmacHex(secret: string, message: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message))
-  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('')
+function hmacHex(secret: string, message: string): string {
+  return createHmac('sha256', secret).update(message).digest('hex')
 }
 
-async function sha256Hex(message: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(message))
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+function sha256Hex(message: string): string {
+  return createHash('sha256').update(message).digest('hex')
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b))
 }
 
 function randomHex(bytes = 16): string {
-  const arr = new Uint8Array(bytes)
-  crypto.getRandomValues(arr)
-  return [...arr].map(b => b.toString(16).padStart(2, '0')).join('')
+  return randomBytes(bytes).toString('hex')
 }
 
 export async function verifyPassword(input: string): Promise<boolean> {
   const password = getSitePassword()
   if (!password) return true
-  const [a, b] = await Promise.all([sha256Hex(input.trim()), sha256Hex(password)])
-  return constantTimeEqual(a, b)
+  return constantTimeEqual(sha256Hex(input.trim()), sha256Hex(password))
 }
 
 export async function createSessionToken(): Promise<string> {

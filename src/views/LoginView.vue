@@ -41,7 +41,14 @@ async function submit() {
       body: JSON.stringify({ password: password.value }),
     })
     if (!r.ok) {
-      error.value = r.status === 429 ? '尝试次数过多，请稍后再试。' : '密码不正确。'
+      const payload = await r.json().catch(() => null)
+      if (r.status === 401) {
+        error.value = '密码不正确。'
+      } else if (r.status === 429) {
+        error.value = '尝试次数过多，请稍后再试。'
+      } else {
+        error.value = payload?.message ? `认证服务异常：${payload.message}` : '认证服务异常，请稍后再试。'
+      }
       return
     }
     router.replace(nextPath())
