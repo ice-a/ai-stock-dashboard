@@ -11,6 +11,7 @@ interface ApiRequest {
   method?: string
   headers: Record<string, string | string[] | undefined>
   body?: unknown
+  on?(event: 'data' | 'end' | 'error', callback: (...args: any[]) => void): void
 }
 
 interface ApiResponse {
@@ -18,19 +19,36 @@ interface ApiResponse {
   status(code: number): { json(payload: unknown): void }
 }
 
-async function readPassword(body: unknown): Promise<string> {
-  if (!body) return ''
-  if (typeof body === 'string') {
+async function readRawBody(req: ApiRequest): Promise<string> {
+  if (typeof req.body === 'string') return req.body
+  if (req.body && Buffer.isBuffer(req.body)) return req.body.toString('utf8')
+  if (!req.on) return ''
+
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on?.('data', chunk => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    })
+    req.on?.('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on?.('error', reject)
+  })
+}
+
+async function readPassword(req: ApiRequest): Promise<string> {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return 'password' in req.body ? String((req.body as { password?: unknown }).password || '') : ''
+  }
+
+  const raw = await readRawBody(req)
+  if (raw) {
     try {
-      const json = JSON.parse(body) as { password?: string }
+      const json = JSON.parse(raw) as { password?: string }
       return String(json.password || '')
     } catch {
       return ''
     }
   }
-  if (typeof body === 'object' && 'password' in body) {
-    return String((body as { password?: unknown }).password || '')
-  }
+
   return ''
 }
 
@@ -53,7 +71,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
-  const password = await readPassword(req.body)
+  const password = await readPassword(req)
   if (!(await verifyPassword(password))) {
     await new Promise(resolve => setTimeout(resolve, 350))
     res.status(401).json({ error: 'Invalid password' })

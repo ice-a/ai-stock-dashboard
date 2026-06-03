@@ -57,7 +57,7 @@ function randomHex(bytes = 16): string {
 export async function verifyPassword(input: string): Promise<boolean> {
   const password = getSitePassword()
   if (!password) return true
-  const [a, b] = await Promise.all([sha256Hex(input), sha256Hex(password)])
+  const [a, b] = await Promise.all([sha256Hex(input.trim()), sha256Hex(password)])
   return constantTimeEqual(a, b)
 }
 
