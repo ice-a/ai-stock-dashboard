@@ -1,3 +1,5 @@
+import { getLongbridgeQuotes } from '../../src/server/longbridgeService.ts'
+
 interface ApiRequest {
   method?: string
   query?: Record<string, string | string[] | undefined>
@@ -6,9 +8,6 @@ interface ApiRequest {
 interface ApiResponse {
   status(code: number): { json(payload: unknown): void }
 }
-
-const DISABLED_REASON =
-  'Longbridge native SDK is disabled on Vercel because its Linux binding exceeds the 250 MB Serverless Function size limit.'
 
 function readQueryString(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || ''
@@ -27,5 +26,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
-  res.status(502).json({ error: DISABLED_REASON })
+  try {
+    res.status(200).json({ data: await getLongbridgeQuotes(symbols) })
+  } catch (e) {
+    res.status(502).json({ error: (e as Error).message })
+  }
 }

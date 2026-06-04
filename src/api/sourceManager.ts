@@ -1,6 +1,7 @@
-// 多源调度：按顺序尝试 新浪 → 东方财富 → Yahoo Finance → 静态 fallback
+// 多源调度：按顺序尝试 长桥 → 新浪 → 东方财富 → Yahoo Finance → 静态 fallback
 import type { Quote, KLineData } from '../types'
 import { getFallbackQuote } from '../data/fallbackQuotes'
+import { longportProvider } from './sources/longportProvider'
 import { eastmoneyProvider } from './sources/eastmoneyProvider'
 import { sinaProvider } from './sources/sinaProvider'
 import { yahooProvider } from './sources/yahooProvider'
@@ -18,10 +19,10 @@ export type SourceHealth = {
 }
 
 const health: Record<string, SourceHealth> = {
+  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   sina: { id: 'sina', name: '新浪财经', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   eastmoney: { id: 'eastmoney', name: '东方财富', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   yahoo: { id: 'yahoo', name: 'Yahoo Finance', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
-  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: 'disabled on Vercel', attempts: 0, failures: 0, lastDuration: 0, configured: false },
   static: { id: 'static', name: '静态快照', lastSuccess: Date.now(), lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
 }
 
@@ -74,14 +75,14 @@ function isProviderConfigured(p: QuoteProvider): boolean {
 }
 
 function resolveOrder(providers: QuoteProvider[], preferred?: string[]): string[] {
-  return (preferred || ['sina', 'eastmoney', 'yahoo']).filter(id => {
+  return (preferred || ['longport', 'sina', 'eastmoney', 'yahoo']).filter(id => {
     const provider = providers.find(p => p.meta.id === id)
     return provider ? isProviderConfigured(provider) : false
   })
 }
 
 class SourceManager {
-  private providers: QuoteProvider[] = [sinaProvider, eastmoneyProvider, yahooProvider]
+  private providers: QuoteProvider[] = [longportProvider, sinaProvider, eastmoneyProvider, yahooProvider]
 
   list(): SourceHealth[] {
     return Object.values(health)

@@ -4,7 +4,7 @@
 
 ## 功能概览
 
-- **多源行情降级**：按 Sina、东方财富、Yahoo 和静态快照顺序尝试，单个数据源失败不会阻塞页面。
+- **多源行情降级**：按长桥、Sina、东方财富、Yahoo 和静态快照顺序尝试，单个数据源失败不会阻塞页面。
 - **服务端密钥**：AI 和访问密码都从服务端环境变量读取，不把敏感配置打进前端包。
 - **站点密码保护**：设置 `SITE_PASSWORD` 后，Vercel Middleware 会在访问网站前要求登录；登录态使用 HttpOnly Cookie。
 - **单股查询**：左侧菜单「自定义查询」，支持名称/代码搜索、标准代码直达、热门股票报价。
@@ -58,12 +58,13 @@ npm run preview
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `LONGBRIDGE_APP_KEY` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
-| `LONGBRIDGE_APP_SECRET` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
-| `LONGBRIDGE_ACCESS_TOKEN` | 否 | 预留给后续纯 JS 长桥协议或外部代理接入 |
+| `LONGBRIDGE_APP_KEY` | 推荐 | 长桥 OpenAPI App Key，用于优先数据源 |
+| `LONGBRIDGE_APP_SECRET` | 推荐 | 长桥 OpenAPI App Secret，用于服务端签名 |
+| `LONGBRIDGE_ACCESS_TOKEN` | 推荐 | 长桥 OpenAPI Access Token，用于服务端行情接口 |
 | `LONGBRIDGE_HTTP_URL` | 否 | 默认 `https://openapi.longbridge.com` |
+| `LONGBRIDGE_QUOTE_WS_URL` | 否 | 默认 `wss://openapi-quote.longbridge.com/v2` |
 
-兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。当前 Vercel 版本不会安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
+兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。传统 OpenAPI API Key 模式需要 `APP_KEY`、`APP_SECRET`、`ACCESS_TOKEN` 三项；如果 `ACCESS_TOKEN` 是 `Bearer ...` 格式，会按 OAuth/Bearer 模式请求，不生成 HMAC 签名。当前 Vercel 版本使用纯 JS 长桥 OpenAPI 协议客户端，不安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
 
 ### AI 服务端托管
 
@@ -89,10 +90,10 @@ npm run preview
 1. Fork 或推送本仓库到 GitHub。
 2. 在 Vercel 导入项目。
 3. Framework 选择 Vite，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
-4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`，以及可选 `AI_*`。
+4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD` 和 `LONGBRIDGE_*`，以及可选 `AI_*`。
 5. 部署后访问站点，会先进入 `/login`。
 
-项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 保持轻量诊断接口，不打包 Longbridge 官方 Node SDK；默认行情链路会跳过长桥，使用 Sina、东方财富、Yahoo 和静态快照降级。
+项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK；默认行情链路会优先请求长桥，失败后自动降级到 Sina、东方财富、Yahoo 和静态快照。
 
 ## API Routes
 
@@ -102,9 +103,9 @@ npm run preview
 | `/api/auth/login` | 校验 `SITE_PASSWORD`，写入 HttpOnly Cookie |
 | `/api/auth/logout` | 清除登录 Cookie |
 | `/api/config` | 返回非敏感运行时配置 |
-| `/api/longbridge/status` | 返回长桥兼容入口状态和禁用原因 |
-| `/api/longbridge/quotes` | 长桥报价兼容入口，Vercel 版本返回可诊断禁用原因 |
-| `/api/longbridge/candlesticks` | 长桥 K 线兼容入口，Vercel 版本返回可诊断禁用原因 |
+| `/api/longbridge/status` | 返回长桥入口配置状态 |
+| `/api/longbridge/quotes` | 长桥实时报价入口 |
+| `/api/longbridge/candlesticks` | 长桥 K 线入口 |
 | `/api/ai/models` | 服务端托管 AI 模型列表 |
 | `/api/ai/chat` | 服务端托管非流式 Chat |
 | `/api/ai/chat-stream` | 服务端托管流式 Chat |
@@ -131,7 +132,7 @@ vercel.json           # Vercel 构建与缓存配置
 
 ## 数据说明
 
-- Vercel 版本的实时/准实时行情来自东方财富、Sina、Yahoo 等数据源；长桥官方 Node SDK 因原生包体积限制暂不打包。
+- Vercel 版本会优先使用长桥 OpenAPI；若长桥未配置或请求失败，会自动降级到 Sina、东方财富、Yahoo 等数据源。长桥官方 Node SDK 因原生包体积限制暂不打包。
 - AI 输出仅作研究辅助，不构成投资建议。
 - 个人持仓数据保存在浏览器 `localStorage`，不会上传到服务端。
 
