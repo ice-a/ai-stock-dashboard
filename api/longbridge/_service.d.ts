@@ -23,6 +23,7 @@ export interface LongbridgeCandlestickDto {
 
 export interface LongbridgeStatusDto {
   configured: boolean
+  region: string
   host: string
   quoteHost: string
   sdkLoaded: boolean

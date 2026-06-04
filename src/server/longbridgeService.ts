@@ -28,6 +28,7 @@ export interface LongbridgeCandlestickDto {
 
 export interface LongbridgeStatusDto {
   configured: boolean
+  region: string
   host: string
   quoteHost: string
   sdkLoaded: boolean
@@ -37,7 +38,9 @@ export interface LongbridgeStatusDto {
 type Query = Record<string, string | number | boolean | undefined>
 
 const HTTP_URL = 'https://openapi.longbridge.com'
+const HTTP_URL_CN = 'https://openapi.longbridge.cn'
 const QUOTE_WS_URL = 'wss://openapi-quote.longbridge.com/v2'
+const QUOTE_WS_URL_CN = 'wss://openapi-quote.longbridge.cn/v2'
 const REQUEST_TIMEOUT_MS = 8_000
 const CONNECT_TIMEOUT_MS = 4_000
 
@@ -136,12 +139,20 @@ function getCredentials() {
   return { appKey, appSecret, accessToken }
 }
 
+function getRegion(): string {
+  return (readEnv('LONGBRIDGE_REGION') || readEnv('LONGPORT_REGION')).toLowerCase()
+}
+
+function isChinaRegion(): boolean {
+  return ['cn', 'china', 'mainland'].includes(getRegion())
+}
+
 function getHttpUrl(): string {
-  return (readEnv('LONGBRIDGE_HTTP_URL') || HTTP_URL).replace(/\/+$/, '')
+  return (readEnv('LONGBRIDGE_HTTP_URL') || (isChinaRegion() ? HTTP_URL_CN : HTTP_URL)).replace(/\/+$/, '')
 }
 
 function getQuoteWsUrl(): string {
-  return readEnv('LONGBRIDGE_QUOTE_WS_URL') || QUOTE_WS_URL
+  return readEnv('LONGBRIDGE_QUOTE_WS_URL') || (isChinaRegion() ? QUOTE_WS_URL_CN : QUOTE_WS_URL)
 }
 
 function isConfigured(): boolean {
@@ -152,6 +163,7 @@ function isConfigured(): boolean {
 export function getLongbridgeStatus(): LongbridgeStatusDto {
   return {
     configured: isConfigured(),
+    region: getRegion() || 'global',
     host: getHttpUrl(),
     quoteHost: getQuoteWsUrl(),
     sdkLoaded: false,

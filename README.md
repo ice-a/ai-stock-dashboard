@@ -61,10 +61,11 @@ npm run preview
 | `LONGBRIDGE_APP_KEY` | 推荐 | 长桥 OpenAPI App Key，用于优先数据源 |
 | `LONGBRIDGE_APP_SECRET` | 推荐 | 长桥 OpenAPI App Secret，用于服务端签名 |
 | `LONGBRIDGE_ACCESS_TOKEN` | 推荐 | 长桥 OpenAPI Access Token，用于服务端行情接口 |
-| `LONGBRIDGE_HTTP_URL` | 否 | 默认 `https://openapi.longbridge.com` |
-| `LONGBRIDGE_QUOTE_WS_URL` | 否 | 默认 `wss://openapi-quote.longbridge.com/v2` |
+| `LONGBRIDGE_REGION` | 否 | 中国区凭证填 `cn`；默认全球区 |
+| `LONGBRIDGE_HTTP_URL` | 否 | 默认全球区 `https://openapi.longbridge.com`；`LONGBRIDGE_REGION=cn` 时为 `https://openapi.longbridge.cn` |
+| `LONGBRIDGE_QUOTE_WS_URL` | 否 | 默认全球区 `wss://openapi-quote.longbridge.com/v2`；`LONGBRIDGE_REGION=cn` 时为 `wss://openapi-quote.longbridge.cn/v2` |
 
-兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`，但推荐使用 `LONGBRIDGE_*`。传统 OpenAPI API Key 模式需要 `APP_KEY`、`APP_SECRET`、`ACCESS_TOKEN` 三项；如果 `ACCESS_TOKEN` 是 `Bearer ...` 格式，会按 OAuth/Bearer 模式请求，不生成 HMAC 签名。当前 Vercel 版本使用纯 JS 长桥 OpenAPI 协议客户端，不安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
+兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`、`LONGPORT_REGION`，但推荐使用 `LONGBRIDGE_*`。传统 OpenAPI API Key 模式需要 `APP_KEY`、`APP_SECRET`、`ACCESS_TOKEN` 三项；如果 `ACCESS_TOKEN` 是 `Bearer ...` 格式，会按 OAuth/Bearer 模式请求，不生成 HMAC 签名。当前 Vercel 版本使用纯 JS 长桥 OpenAPI 协议客户端，不安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
 
 ### AI 服务端托管
 
