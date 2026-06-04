@@ -165,21 +165,14 @@ function marketDevApiPlugin(): Plugin {
         }
 
         try {
-          const mod = pathname === 'eastmoney'
-            ? await import('./api/market/eastmoney.ts')
-            : pathname === 'sina'
-              ? await import('./api/market/sina.ts')
-              : pathname === 'yahoo'
-                ? await import('./api/market/yahoo.ts')
-                : null
-
-          if (!mod) {
+          if (!['eastmoney', 'sina', 'yahoo'].includes(pathname)) {
             sendJson(404, { error: 'Not found' })
             return
           }
 
+          const mod = await import('./api/market/[source].ts')
           await mod.default(
-            { method: req.method, query },
+            { method: req.method, query: { ...query, source: pathname } },
             { status: (code: number) => ({ json: (payload: unknown) => sendJson(code, payload) }) },
           )
         } catch (e) {
