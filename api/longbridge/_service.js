@@ -3,10 +3,10 @@ import { gunzipSync } from 'node:zlib'
 import protobuf from 'protobufjs'
 import WebSocket from 'ws'
 
-const HTTP_URL = 'https://openapi.longbridge.com'
-const HTTP_URL_CN = 'https://openapi.longbridge.cn'
-const QUOTE_WS_URL = 'wss://openapi-quote.longbridge.com/v2'
-const QUOTE_WS_URL_CN = 'wss://openapi-quote.longbridge.cn/v2'
+const HTTP_URL = 'https://openapi.longportapp.com'
+const HTTP_URL_CN = 'https://openapi.longportapp.cn'
+const QUOTE_WS_URL = 'wss://openapi-quote.longportapp.com'
+const QUOTE_WS_URL_CN = 'wss://openapi-quote.longportapp.cn'
 const REQUEST_TIMEOUT_MS = 8_000
 const CONNECT_TIMEOUT_MS = 4_000
 
@@ -98,36 +98,83 @@ function readEnv(name) {
   return process.env[name]?.trim() || ''
 }
 
+function hasLongportEnvGroup(prefix) {
+  return Boolean(readEnv(`${prefix}_APP_KEY`) || readEnv(`${prefix}_APP_SECRET`) || readEnv(`${prefix}_ACCESS_TOKEN`))
+}
+
+function readLongportEnv(name) {
+  return readEnv(`LONGPORT_${name}`) || readEnv(`LONGBRIDGE_${name}`)
+}
+
 function getCredentials() {
-  const appKey = readEnv('LONGBRIDGE_APP_KEY') || readEnv('LONGPORT_APP_KEY')
-  const appSecret = readEnv('LONGBRIDGE_APP_SECRET') || readEnv('LONGPORT_APP_SECRET')
-  const accessToken = readEnv('LONGBRIDGE_ACCESS_TOKEN') || readEnv('LONGPORT_ACCESS_TOKEN')
+  const prefix = hasLongportEnvGroup('LONGPORT') ? 'LONGPORT' : 'LONGBRIDGE'
+  const appKey = readEnv(`${prefix}_APP_KEY`)
+  const appSecret = readEnv(`${prefix}_APP_SECRET`)
+  const accessToken = readEnv(`${prefix}_ACCESS_TOKEN`)
   return { appKey, appSecret, accessToken }
 }
 
 function getRegion() {
-  return (readEnv('LONGBRIDGE_REGION') || readEnv('LONGPORT_REGION')).toLowerCase()
+  return readLongportEnv('REGION').toLowerCase()
 }
 
 function isChinaRegion() {
   return ['cn', 'china', 'mainland'].includes(getRegion())
 }
 
+function normalizeHttpUrl(url) {
+  const clean = url.replace(/\/+$/, '')
+  if (clean === 'https://openapi.longbridge.com') return HTTP_URL
+  if (clean === 'https://openapi.longbridge.cn') return HTTP_URL_CN
+  return clean
+}
+
+function normalizeQuoteWsUrl(url) {
+  const clean = url.replace(/\/+$/, '').replace(/\/v2$/i, '')
+  if (clean === 'wss://openapi-quote.longbridge.com') return QUOTE_WS_URL
+  if (clean === 'wss://openapi-quote.longbridge.cn') return QUOTE_WS_URL_CN
+  return clean
+}
+
 function getHttpUrl() {
-  return (readEnv('LONGBRIDGE_HTTP_URL') || (isChinaRegion() ? HTTP_URL_CN : HTTP_URL)).replace(/\/+$/, '')
+  return normalizeHttpUrl(readLongportEnv('HTTP_URL') || (isChinaRegion() ? HTTP_URL_CN : HTTP_URL))
 }
 
 function getQuoteWsUrl() {
-  return readEnv('LONGBRIDGE_QUOTE_WS_URL') || (isChinaRegion() ? QUOTE_WS_URL_CN : QUOTE_WS_URL)
+  return normalizeQuoteWsUrl(readLongportEnv('QUOTE_WS_URL') || (isChinaRegion() ? QUOTE_WS_URL_CN : QUOTE_WS_URL))
 }
 
 function isBearerToken(token) {
   return token.startsWith('Bearer ')
 }
 
+function longportError(message, statusCode = 502) {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  return error
+}
+
 function isConfigured() {
   const creds = getCredentials()
   return Boolean(creds.appKey && creds.accessToken && (creds.appSecret || isBearerToken(creds.accessToken)))
+}
+
+function missingConfigReason() {
+  const creds = getCredentials()
+  const missing = []
+  if (!creds.appKey) missing.push('LONGPORT_APP_KEY')
+  if (!creds.accessToken) missing.push('LONGPORT_ACCESS_TOKEN')
+  if (!creds.appSecret && !isBearerToken(creds.accessToken)) missing.push('LONGPORT_APP_SECRET')
+  return missing.length ? `LongPort credentials are not configured: ${missing.join(', ')}.` : ''
+}
+
+function normalizeLongportSymbol(symbol) {
+  const upper = symbol.trim().toUpperCase()
+  if (upper.endsWith('.HK')) {
+    const code = upper.slice(0, -3).replace(/^0+/, '') || '0'
+    return `${code}.HK`
+  }
+  return upper
 }
 
 export function getLongbridgeStatus() {
@@ -137,7 +184,7 @@ export function getLongbridgeStatus() {
     host: getHttpUrl(),
     quoteHost: getQuoteWsUrl(),
     sdkLoaded: false,
-    disabledReason: isConfigured() ? '' : 'Longbridge credentials are not configured.',
+    disabledReason: isConfigured() ? '' : missingConfigReason(),
   }
 }
 
@@ -167,7 +214,7 @@ function signRequest(method, path, query, body, timestamp) {
 
 async function longbridgeHttp(method, path, query = {}, body) {
   const { appKey, accessToken } = getCredentials()
-  if (!isConfigured()) throw new Error('Longbridge credentials are not configured')
+  if (!isConfigured()) throw longportError(missingConfigReason(), 503)
 
   const queryString = buildQuery(query)
   const timestamp = Math.floor(Date.now() / 1000).toString()
@@ -191,9 +238,15 @@ async function longbridgeHttp(method, path, query = {}, body) {
   } catch {
     // Keep raw response below for diagnostics.
   }
-  if (!res.ok) throw new Error(`Longbridge HTTP ${res.status}: ${text.slice(0, 160)}`)
+  const message = json?.message || json?.msg || text.slice(0, 160)
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw longportError(`LongPort auth failed (${json?.code || res.status}): ${message}. Check LONGPORT_ACCESS_TOKEN, LONGPORT_APP_KEY, LONGPORT_APP_SECRET and LONGPORT_REGION=${getRegion() || 'hk'}.`, 401)
+    }
+    throw longportError(`LongPort HTTP ${res.status}: ${message}`, 502)
+  }
   if (!json || json.code !== 0) {
-    throw new Error(json?.message || `Unexpected Longbridge response: ${text.slice(0, 160)}`)
+    throw longportError(message || `Unexpected LongPort response: ${text.slice(0, 160)}`)
   }
   return json.data
 }
@@ -315,6 +368,7 @@ async function requestWs(ws, commandCode, requestId, requestType, responseType, 
 
 async function withQuoteWs(fn) {
   const token = await longbridgeHttp('GET', '/v1/socket/token')
+  if (!token?.otp) throw longportError('LongPort socket token response missing otp')
   const url = new URL(getQuoteWsUrl())
   url.searchParams.set('version', '1')
   url.searchParams.set('codec', '1')
@@ -333,7 +387,7 @@ async function withQuoteWs(fn) {
 }
 
 export async function getLongbridgeQuotes(symbols) {
-  const cleanSymbols = symbols.map(s => s.trim().toUpperCase()).filter(Boolean)
+  const cleanSymbols = symbols.map(normalizeLongportSymbol).filter(Boolean)
   if (cleanSymbols.length === 0) return []
 
   return withQuoteWs(async ws => {
@@ -364,7 +418,7 @@ function periodToLongbridge(period) {
 }
 
 export async function getLongbridgeCandlesticks(symbol, period = 'day', count = 200) {
-  const cleanSymbol = symbol.trim().toUpperCase()
+  const cleanSymbol = normalizeLongportSymbol(symbol)
   if (!cleanSymbol) return []
 
   return withQuoteWs(async ws => {

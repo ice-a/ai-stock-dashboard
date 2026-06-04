@@ -108,9 +108,9 @@ export function isLikelySupported(symbol: string): boolean {
 // LongPort Quote API 调用时需要 canonical 符号
 export function toLongportSymbol(symbol: string): string {
   const upper = symbol.toUpperCase().trim()
-  // 0700.HK
+  // LongPort docs use ticker.region, e.g. 700.HK instead of 00700.HK.
   if (upper.endsWith('.HK')) {
-    return upper.slice(0, -3).padStart(5, '0') + '.HK'
+    return (upper.slice(0, -3).replace(/^0+/, '') || '0') + '.HK'
   }
   return upper
 }

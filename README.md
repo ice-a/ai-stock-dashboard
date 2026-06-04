@@ -58,14 +58,14 @@ npm run preview
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `LONGBRIDGE_APP_KEY` | 推荐 | 长桥 OpenAPI App Key，用于优先数据源 |
-| `LONGBRIDGE_APP_SECRET` | 推荐 | 长桥 OpenAPI App Secret，用于服务端签名 |
-| `LONGBRIDGE_ACCESS_TOKEN` | 推荐 | 长桥 OpenAPI Access Token，用于服务端行情接口 |
-| `LONGBRIDGE_REGION` | 否 | 中国区凭证填 `cn`；默认全球区 |
-| `LONGBRIDGE_HTTP_URL` | 否 | 默认全球区 `https://openapi.longbridge.com`；`LONGBRIDGE_REGION=cn` 时为 `https://openapi.longbridge.cn` |
-| `LONGBRIDGE_QUOTE_WS_URL` | 否 | 默认全球区 `wss://openapi-quote.longbridge.com/v2`；`LONGBRIDGE_REGION=cn` 时为 `wss://openapi-quote.longbridge.cn/v2` |
+| `LONGPORT_APP_KEY` | 推荐 | 长桥 OpenAPI App Key，用于优先数据源 |
+| `LONGPORT_APP_SECRET` | 推荐 | 长桥 OpenAPI App Secret，用于服务端签名 |
+| `LONGPORT_ACCESS_TOKEN` | 推荐 | 长桥 OpenAPI Access Token，用于服务端行情接口 |
+| `LONGPORT_REGION` | 否 | 中国区凭证填 `cn`；默认全球区/香港区 |
+| `LONGPORT_HTTP_URL` | 否 | 默认全球区 `https://openapi.longportapp.com`；`LONGPORT_REGION=cn` 时为 `https://openapi.longportapp.cn` |
+| `LONGPORT_QUOTE_WS_URL` | 否 | 默认全球区 `wss://openapi-quote.longportapp.com`；`LONGPORT_REGION=cn` 时为 `wss://openapi-quote.longportapp.cn` |
 
-兼容旧变量名 `LONGPORT_APP_KEY`、`LONGPORT_APP_SECRET`、`LONGPORT_ACCESS_TOKEN`、`LONGPORT_REGION`，但推荐使用 `LONGBRIDGE_*`。传统 OpenAPI API Key 模式需要 `APP_KEY`、`APP_SECRET`、`ACCESS_TOKEN` 三项；如果 `ACCESS_TOKEN` 是 `Bearer ...` 格式，会按 OAuth/Bearer 模式请求，不生成 HMAC 签名。当前 Vercel 版本使用纯 JS 长桥 OpenAPI 协议客户端，不安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
+兼容旧变量名 `LONGBRIDGE_APP_KEY`、`LONGBRIDGE_APP_SECRET`、`LONGBRIDGE_ACCESS_TOKEN`、`LONGBRIDGE_REGION`，但推荐使用官方文档的 `LONGPORT_*`。传统 OpenAPI API Key 模式需要 `APP_KEY`、`APP_SECRET`、`ACCESS_TOKEN` 三项；如果 `ACCESS_TOKEN` 是 `Bearer ...` 格式，会按 OAuth/Bearer 模式请求，不生成 HMAC 签名。当前 Vercel 版本使用纯 JS 长桥 OpenAPI 协议客户端，不安装 Longbridge 官方 Node SDK，因为其 Linux 原生 binding 会超过 Vercel Serverless Function 250 MB 解压体积限制。
 
 ### AI 服务端托管
 
@@ -91,7 +91,7 @@ npm run preview
 1. Fork 或推送本仓库到 GitHub。
 2. 在 Vercel 导入项目。
 3. Framework 选择 Vite，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
-4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD` 和 `LONGBRIDGE_*`，以及可选 `AI_*`。
+4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD` 和 `LONGPORT_*`，以及可选 `AI_*`。
 5. 部署后访问站点，会先进入 `/login`。
 
 项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK；默认行情链路会优先请求长桥，失败后自动降级到 Sina、东方财富、Yahoo 和静态快照。

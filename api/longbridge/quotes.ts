@@ -7,6 +7,10 @@ interface ApiResponse {
   status(code: number): { json(payload: unknown): void }
 }
 
+interface ApiError extends Error {
+  statusCode?: number
+}
+
 function readQueryString(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
@@ -28,6 +32,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const { getLongbridgeQuotes } = await import('./_service.js')
     res.status(200).json({ data: await getLongbridgeQuotes(symbols) })
   } catch (e) {
-    res.status(502).json({ error: (e as Error).message })
+    const error = e as ApiError
+    res.status(error.statusCode || 502).json({ error: error.message })
   }
 }
