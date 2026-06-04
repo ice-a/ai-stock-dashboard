@@ -1,5 +1,3 @@
-import { getLongbridgeQuotes } from '../../src/server/longbridgeService.ts'
-
 interface ApiRequest {
   method?: string
   query?: Record<string, string | string[] | undefined>
@@ -27,6 +25,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
+    const { getLongbridgeQuotes } = await import('./_service.js')
     res.status(200).json({ data: await getLongbridgeQuotes(symbols) })
   } catch (e) {
     res.status(502).json({ error: (e as Error).message })

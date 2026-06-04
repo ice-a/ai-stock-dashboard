@@ -1,5 +1,3 @@
-import { getLongbridgeCandlesticks } from '../../src/server/longbridgeService.ts'
-
 interface ApiRequest {
   method?: string
   query?: Record<string, string | string[] | undefined>
@@ -26,6 +24,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
+    const { getLongbridgeCandlesticks } = await import('./_service.js')
     const period = readQueryString(req.query?.period) || 'day'
     const count = Number(readQueryString(req.query?.count)) || 200
     res.status(200).json({ data: await getLongbridgeCandlesticks(symbol, period, count) })

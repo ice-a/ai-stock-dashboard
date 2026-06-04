@@ -97,7 +97,7 @@ function longbridgeDevApiPlugin(): Plugin {
         const pathname = url.pathname.replace(/^\/+/, '')
 
         try {
-          const service = await import('./src/server/longbridgeService.ts')
+          const service = await import('./api/longbridge/_service.js')
 
           if (pathname === 'status') {
             res.writeHead(200, { 'Content-Type': 'application/json' })
