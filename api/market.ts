@@ -16,6 +16,10 @@ const EM_KLINE_BASES = [
   'https://push2his.eastmoney.com/api/qt/stock/kline/get',
 ]
 
+const EM_SEARCH_URL = 'https://searchapi.eastmoney.com/api/suggest/get'
+const EM_NOTICE_URL = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
+const EM_NEWS_URL = 'https://search-api-web.eastmoney.com/search/jsonp'
+
 function readQueryString(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
@@ -77,6 +81,68 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
     })
     const data = await fetchFirstJson(EM_KLINE_BASES.map(base => `${base}?${params.toString()}`))
     res.status(200).json(data)
+    return
+  }
+
+  if (mode === 'search') {
+    const input = readQueryString(req.query?.input).trim()
+    if (!input) {
+      res.status(200).json({})
+      return
+    }
+    const params = new URLSearchParams({
+      input,
+      type: readQueryString(req.query?.type) || '14',
+      token: readQueryString(req.query?.token) || 'D43BF722C8E33BDC906FB84D85E326E8',
+      count: readQueryString(req.query?.count) || '10',
+    })
+    const text = await fetchText(`${EM_SEARCH_URL}?${params.toString()}`, {
+      Referer: 'https://quote.eastmoney.com/',
+      'User-Agent': 'Mozilla/5.0',
+      Accept: 'application/json,text/plain,*/*',
+    })
+    res.status(200).json(JSON.parse(text))
+    return
+  }
+
+  if (mode === 'announcements') {
+    const stockList = readQueryString(req.query?.stock_list)
+    if (!stockList) {
+      res.status(400).json({ error: 'Missing stock_list' })
+      return
+    }
+    const params = new URLSearchParams({
+      page_size: readQueryString(req.query?.page_size) || '10',
+      page_index: readQueryString(req.query?.page_index) || '1',
+      ann_type: readQueryString(req.query?.ann_type) || 'SHA,SZA',
+      stock_list: stockList,
+    })
+    const text = await fetchText(`${EM_NOTICE_URL}?${params.toString()}`, {
+      Referer: 'https://data.eastmoney.com/',
+      'User-Agent': 'Mozilla/5.0',
+      Accept: 'application/json,text/plain,*/*',
+    })
+    res.status(200).json(JSON.parse(text))
+    return
+  }
+
+  if (mode === 'news') {
+    const param = readQueryString(req.query?.param)
+    if (!param) {
+      res.status(400).json({ error: 'Missing param' })
+      return
+    }
+    const cb = readQueryString(req.query?.cb) || `cb_${Date.now()}`
+    const params = new URLSearchParams({ cb, param })
+    const text = await fetchText(`${EM_NEWS_URL}?${params.toString()}`, {
+      Referer: 'https://so.eastmoney.com/',
+      'User-Agent': 'Mozilla/5.0',
+      Accept: 'application/javascript,text/plain,*/*',
+    })
+    const jsonStart = text.indexOf('(')
+    const jsonEnd = text.lastIndexOf(')')
+    if (jsonStart < 0 || jsonEnd < 0) throw new Error('Invalid EastMoney news response')
+    res.status(200).json(JSON.parse(text.slice(jsonStart + 1, jsonEnd)))
     return
   }
 

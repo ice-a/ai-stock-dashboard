@@ -8,7 +8,7 @@ export interface SearchResult {
   type: string     // 股票 / ETF / 指数
 }
 
-const EM_SEARCH_URL = 'https://searchapi.eastmoney.com/api/suggest/get'
+const EM_SEARCH_URL = '/api/market?source=eastmoney&mode=search'
 
 // 东方财富市场代码 → 我们的 market 名称
 function mapMarket(mktId: number | string, code: string): { market: string; symbol: string } {
@@ -25,7 +25,7 @@ export async function searchStocks(keyword: string): Promise<SearchResult[]> {
   if (!keyword.trim()) return []
 
   try {
-    const url = `${EM_SEARCH_URL}?input=${encodeURIComponent(keyword)}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10`
+    const url = `${EM_SEARCH_URL}&input=${encodeURIComponent(keyword)}&type=14&count=10`
     const r = await fetch(url)
     if (!r.ok) return []
     const json = await r.json() as {

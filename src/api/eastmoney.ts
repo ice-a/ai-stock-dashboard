@@ -6,7 +6,7 @@
 import { parseLongportSymbol } from './symbolMap'
 
 // 东方财富发送 CORS 头 (access-control-allow-origin: *)，浏览器可直连
-const EM_PROXY = '/api/market/eastmoney'
+const EM_PROXY = '/api/market?source=eastmoney'
 
 // 报价字段
 const QUOTE_FIELDS = 'f43,f44,f45,f46,f47,f48,f50,f57,f58,f60,f107,f162,f167,f168,f169,f170,f117'
@@ -42,7 +42,7 @@ async function emFetchQuote(symbols: string[], signal?: AbortSignal): Promise<Ma
       secid: p.eastmoneySecid,
       fields: QUOTE_FIELDS,
     })
-    const url = `${EM_PROXY}?${params.toString()}`
+    const url = `${EM_PROXY}&${params.toString()}`
     try {
       const r = await fetch(url, { signal })
       if (!r.ok) return
@@ -87,7 +87,7 @@ async function emFetchKLine(symbol: string, options: { klt?: number; count?: num
     end: '20500101',
     lmt: String(count),
   })
-  const url = `${EM_PROXY}?${params.toString()}`
+  const url = `${EM_PROXY}&${params.toString()}`
   const r = await fetch(url, { signal: options.signal })
   if (!r.ok) throw new Error(`EastMoney KLine ${r.status}`)
   const json = (await r.json()) as { data?: { klines?: string[] } }

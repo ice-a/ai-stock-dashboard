@@ -135,7 +135,7 @@ function sinaToQuote(symbol: string, raw: SinaRaw | null): Quote {
 }
 
 async function sinaFetchBatch(sinaCodes: string[], signal?: AbortSignal): Promise<string> {
-  const url = `/api/market/sina?symbols=${encodeURIComponent(sinaCodes.join(','))}`
+  const url = `/api/market?source=sina&symbols=${encodeURIComponent(sinaCodes.join(','))}`
   const r = await fetch(url, { signal })
   if (!r.ok) throw new Error(`Sina ${r.status}`)
   const json = await r.json() as { text?: string; error?: string }

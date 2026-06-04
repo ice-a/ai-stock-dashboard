@@ -292,7 +292,7 @@ function onFileSelected(e: Event) {
 
     <section class="card section">
       <h2>数据源健康度</h2>
-      <p class="small muted">系统按 新浪 → 东方财富 → Yahoo → 长桥兼容入口 → 静态快照 顺序回退。第三方行情统一走 Vercel API 代理，避免浏览器 CORS 和公共代理限制。</p>
+      <p class="small muted">系统按 新浪 → 东方财富 → Yahoo → 静态快照 顺序回退。第三方行情统一走 Vercel API 代理，避免浏览器 CORS 和公共代理限制；长桥入口仅保留诊断状态。</p>
       <div class="source-list">
         <div v-for="s in sources" :key="s.id" class="source-row">
           <div class="src-name">
@@ -310,7 +310,7 @@ function onFileSelected(e: Event) {
             <span v-else class="neg">未使用</span>
             <span v-if="s.lastError" class="neg">· {{ s.lastError }}</span>
           </div>
-          <button v-if="s.id === 'longport' || s.id === 'eastmoney' || s.id === 'sina' || s.id === 'yahoo'"
+          <button v-if="s.id === 'eastmoney' || s.id === 'sina' || s.id === 'yahoo'"
                   class="btn small"
                   :disabled="testingSources[s.id] === '...'"
                   @click="testSource(s.id as any)">

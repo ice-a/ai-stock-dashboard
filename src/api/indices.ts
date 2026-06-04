@@ -32,7 +32,7 @@ export async function fetchIndices(): Promise<MarketIndex[]> {
         secid: idx.secid,
         fields: 'f43,f169,f170,f58',
       })
-      const r = await fetch(`/api/market/eastmoney?${params.toString()}`)
+      const r = await fetch(`/api/market?source=eastmoney&${params.toString()}`)
       if (!r.ok) return null
       const json = await r.json() as { data?: { f43?: number; f169?: number; f170?: number; f58?: string } }
       const d = json.data

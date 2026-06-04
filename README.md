@@ -4,7 +4,7 @@
 
 ## 功能概览
 
-- **多源行情降级**：按长桥兼容入口、东方财富、Sina、Yahoo 和静态快照顺序尝试，单个数据源失败不会阻塞页面。
+- **多源行情降级**：按 Sina、东方财富、Yahoo 和静态快照顺序尝试，单个数据源失败不会阻塞页面。
 - **服务端密钥**：AI 和访问密码都从服务端环境变量读取，不把敏感配置打进前端包。
 - **站点密码保护**：设置 `SITE_PASSWORD` 后，Vercel Middleware 会在访问网站前要求登录；登录态使用 HttpOnly Cookie。
 - **单股查询**：左侧菜单「自定义查询」，支持名称/代码搜索、标准代码直达、热门股票报价。
@@ -92,7 +92,7 @@ npm run preview
 4. 在 Environment Variables 中配置上面的 `SITE_PASSWORD`，以及可选 `AI_*`。
 5. 部署后访问站点，会先进入 `/login`。
 
-项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 保持轻量兼容接口，不打包 Longbridge 官方 Node SDK；当前端请求长桥失败时，会自动降级到东方财富、Sina、Yahoo 和静态快照。
+项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。`/api/longbridge/*` 保持轻量诊断接口，不打包 Longbridge 官方 Node SDK；默认行情链路会跳过长桥，使用 Sina、东方财富、Yahoo 和静态快照降级。
 
 ## API Routes
 
@@ -103,8 +103,8 @@ npm run preview
 | `/api/auth/logout` | 清除登录 Cookie |
 | `/api/config` | 返回非敏感运行时配置 |
 | `/api/longbridge/status` | 返回长桥兼容入口状态和禁用原因 |
-| `/api/longbridge/quotes` | 长桥报价兼容入口，Vercel 版本返回可诊断错误并触发前端降级 |
-| `/api/longbridge/candlesticks` | 长桥 K 线兼容入口，Vercel 版本返回可诊断错误并触发前端降级 |
+| `/api/longbridge/quotes` | 长桥报价兼容入口，Vercel 版本返回可诊断禁用原因 |
+| `/api/longbridge/candlesticks` | 长桥 K 线兼容入口，Vercel 版本返回可诊断禁用原因 |
 | `/api/ai/models` | 服务端托管 AI 模型列表 |
 | `/api/ai/chat` | 服务端托管非流式 Chat |
 | `/api/ai/chat-stream` | 服务端托管流式 Chat |

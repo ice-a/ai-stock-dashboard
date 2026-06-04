@@ -153,7 +153,6 @@ function marketDevApiPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use('/api/market', async (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost')
-        const pathname = url.pathname.replace(/^\/+/, '')
         const query: Record<string, string> = {}
         url.searchParams.forEach((value, key) => {
           query[key] = value
@@ -165,14 +164,15 @@ function marketDevApiPlugin(): Plugin {
         }
 
         try {
-          if (!['eastmoney', 'sina', 'yahoo'].includes(pathname)) {
+          const source = query.source || url.pathname.replace(/^\/+/, '')
+          if (!['eastmoney', 'sina', 'yahoo'].includes(source)) {
             sendJson(404, { error: 'Not found' })
             return
           }
 
-          const mod = await import('./api/market/[source].ts')
+          const mod = await import('./api/market.ts')
           await mod.default(
-            { method: req.method, query: { ...query, source: pathname } },
+            { method: req.method, query: { ...query, source } },
             { status: (code: number) => ({ json: (payload: unknown) => sendJson(code, payload) }) },
           )
         } catch (e) {

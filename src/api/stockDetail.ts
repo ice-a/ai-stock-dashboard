@@ -8,7 +8,7 @@ import { useAIStore } from '../stores/ai'
 
 // ─── 东方财富：公告 ───
 
-const EM_NOTICE_URL = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
+const EM_NOTICE_URL = '/api/market?source=eastmoney&mode=announcements'
 
 function detectMarketCode(symbol: string): string {
   const p = parseLongportSymbol(symbol)
@@ -22,10 +22,8 @@ export async function fetchAnnouncements(symbol: string, pageSize = 10): Promise
   if (!code) return [] // 港美股暂无免费 API
 
   try {
-    const url = `${EM_NOTICE_URL}?page_size=${pageSize}&page_index=1&ann_type=SHA,SZA&stock_list=${code}`
-    const r = await fetch(url, {
-      headers: { 'Referer': 'https://data.eastmoney.com/' },
-    })
+    const url = `${EM_NOTICE_URL}&page_size=${pageSize}&page_index=1&ann_type=SHA,SZA&stock_list=${code}`
+    const r = await fetch(url)
     if (!r.ok) return []
     const json = await r.json() as {
       data?: {
@@ -50,7 +48,7 @@ export async function fetchAnnouncements(symbol: string, pageSize = 10): Promise
 
 // ─── 东方财富：新闻 ───
 
-const EM_SEARCH_URL = 'https://search-api-web.eastmoney.com/search/jsonp'
+const EM_SEARCH_URL = '/api/market?source=eastmoney&mode=news'
 
 export async function fetchNews(symbol: string, pageSize = 10): Promise<StockNews[]> {
   const code = detectMarketCode(symbol)
@@ -76,18 +74,11 @@ export async function fetchNews(symbol: string, pageSize = 10): Promise<StockNew
       },
     })
     const cbName = `cb_${Date.now()}`
-    const url = `${EM_SEARCH_URL}?cb=${cbName}&param=${encodeURIComponent(param)}`
+    const url = `${EM_SEARCH_URL}&cb=${cbName}&param=${encodeURIComponent(param)}`
 
-    const r = await fetch(url, {
-      headers: { 'Referer': 'https://so.eastmoney.com/' },
-    })
+    const r = await fetch(url)
     if (!r.ok) return []
-    const text = await r.text()
-    // 解析 JSONP
-    const jsonStart = text.indexOf('(')
-    const jsonEnd = text.lastIndexOf(')')
-    if (jsonStart < 0 || jsonEnd < 0) return []
-    const json = JSON.parse(text.slice(jsonStart + 1, jsonEnd)) as {
+    const json = await r.json() as {
       result?: {
         cmsArticleWebOld?: Array<{
           title: string

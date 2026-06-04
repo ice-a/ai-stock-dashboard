@@ -16,7 +16,7 @@ async function fetchYahooChart(symbol: string, range = '1d', interval = '1d', si
     range,
     interval,
   })
-  const response = await fetch(`/api/market/yahoo?${params.toString()}`, { signal })
+  const response = await fetch(`/api/market?source=yahoo&${params.toString()}`, { signal })
   const json = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(json?.error || `Yahoo ${response.status}`)
