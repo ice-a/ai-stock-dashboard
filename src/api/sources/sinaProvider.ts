@@ -134,18 +134,13 @@ function sinaToQuote(symbol: string, raw: SinaRaw | null): Quote {
   }
 }
 
-const SINA_BASE = import.meta.env.DEV ? '/api/sina' : 'https://hq.sinajs.cn'
-
 async function sinaFetchBatch(sinaCodes: string[], signal?: AbortSignal): Promise<string> {
-  const url = `${SINA_BASE}/list=${sinaCodes.join(',')}`
-  const r = await fetch(url, {
-    signal,
-    headers: {
-      'Referer': 'https://finance.sina.com.cn',
-    },
-  })
+  const url = `/api/market/sina?symbols=${encodeURIComponent(sinaCodes.join(','))}`
+  const r = await fetch(url, { signal })
   if (!r.ok) throw new Error(`Sina ${r.status}`)
-  return r.text()
+  const json = await r.json() as { text?: string; error?: string }
+  if (!json.text) throw new Error(json.error || 'empty response')
+  return json.text
 }
 
 export const sinaProvider: QuoteProvider = {

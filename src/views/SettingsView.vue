@@ -103,7 +103,7 @@ async function testSource(id: 'longport' | 'eastmoney' | 'sina' | 'yahoo') {
 }
 
 onMounted(() => {
-  testSource('longport')
+  testSource('sina')
 })
 
 // ============ 主题 / 语言 / 刷新 ============
@@ -292,7 +292,7 @@ function onFileSelected(e: Event) {
 
     <section class="card section">
       <h2>数据源健康度</h2>
-      <p class="small muted">系统按 长桥兼容入口 → 东方财富 → 新浪 → Yahoo → 静态快照 顺序回退。Vercel 版本不打包 Longbridge 官方 Node SDK，避免超过 Serverless Function 体积限制。</p>
+      <p class="small muted">系统按 新浪 → 东方财富 → Yahoo → 长桥兼容入口 → 静态快照 顺序回退。第三方行情统一走 Vercel API 代理，避免浏览器 CORS 和公共代理限制。</p>
       <div class="source-list">
         <div v-for="s in sources" :key="s.id" class="source-row">
           <div class="src-name">

@@ -6,9 +6,7 @@
 import { parseLongportSymbol } from './symbolMap'
 
 // 东方财富发送 CORS 头 (access-control-allow-origin: *)，浏览器可直连
-const EM_HOST = 'https://push2.eastmoney.com'
-const EM_QUOTE_PATH = '/api/qt/stock/get'
-const EM_KLINE_BASE = 'https://push2his.eastmoney.com/api/qt/stock/kline/get'
+const EM_PROXY = '/api/market/eastmoney'
 
 // 报价字段
 const QUOTE_FIELDS = 'f43,f44,f45,f46,f47,f48,f50,f57,f58,f60,f107,f162,f167,f168,f169,f170,f117'
@@ -39,12 +37,14 @@ async function emFetchQuote(symbols: string[], signal?: AbortSignal): Promise<Ma
   const tasks = symbols.map(async (sym) => {
     const p = parseLongportSymbol(sym)
     if (!p) return
-    const url = `${EM_HOST}${EM_QUOTE_PATH}?secid=${p.eastmoneySecid}&fields=${QUOTE_FIELDS}`
+    const params = new URLSearchParams({
+      mode: 'quote',
+      secid: p.eastmoneySecid,
+      fields: QUOTE_FIELDS,
+    })
+    const url = `${EM_PROXY}?${params.toString()}`
     try {
-      const r = await fetch(url, {
-        signal,
-        headers: { 'Referer': 'https://quote.eastmoney.com/' },
-      })
+      const r = await fetch(url, { signal })
       if (!r.ok) return
       const json = await r.json() as { data?: EMQuoteData }
       if (json.data && json.data.f43 != null) {
@@ -76,11 +76,19 @@ async function emFetchKLine(symbol: string, options: { klt?: number; count?: num
   const klt = options.klt ?? 101  // 101=日, 102=周, 103=月, 5/15/30/60=分钟
   const fqt = options.fqt ?? 1    // 0=不复权, 1=前复权, 2=后复权
   const count = Math.min(options.count || 200, 500)
-  const url = `${EM_KLINE_BASE}?secid=${p.eastmoneySecid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=${klt}&fqt=${fqt}&beg=0&end=20500101&lmt=${count}`
-  const r = await fetch(url, {
-    signal: options.signal,
-    headers: { 'Referer': 'https://quote.eastmoney.com/' },
+  const params = new URLSearchParams({
+    mode: 'kline',
+    secid: p.eastmoneySecid,
+    fields1: 'f1,f2,f3,f4,f5,f6',
+    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+    klt: String(klt),
+    fqt: String(fqt),
+    beg: '0',
+    end: '20500101',
+    lmt: String(count),
   })
+  const url = `${EM_PROXY}?${params.toString()}`
+  const r = await fetch(url, { signal: options.signal })
   if (!r.ok) throw new Error(`EastMoney KLine ${r.status}`)
   const json = (await r.json()) as { data?: { klines?: string[] } }
   if (!json.data?.klines) return []

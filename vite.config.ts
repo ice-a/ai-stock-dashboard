@@ -147,6 +147,49 @@ function longbridgeDevApiPlugin(): Plugin {
   }
 }
 
+function marketDevApiPlugin(): Plugin {
+  return {
+    name: 'market-dev-api',
+    configureServer(server) {
+      server.middlewares.use('/api/market', async (req, res) => {
+        const url = new URL(req.url || '/', 'http://localhost')
+        const pathname = url.pathname.replace(/^\/+/, '')
+        const query: Record<string, string> = {}
+        url.searchParams.forEach((value, key) => {
+          query[key] = value
+        })
+
+        const sendJson = (status: number, payload: unknown) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(payload))
+        }
+
+        try {
+          const mod = pathname === 'eastmoney'
+            ? await import('./api/market/eastmoney.ts')
+            : pathname === 'sina'
+              ? await import('./api/market/sina.ts')
+              : pathname === 'yahoo'
+                ? await import('./api/market/yahoo.ts')
+                : null
+
+          if (!mod) {
+            sendJson(404, { error: 'Not found' })
+            return
+          }
+
+          await mod.default(
+            { method: req.method, query },
+            { status: (code: number) => ({ json: (payload: unknown) => sendJson(code, payload) }) },
+          )
+        } catch (e) {
+          sendJson(502, { error: (e as Error).message })
+        }
+      })
+    },
+  }
+}
+
 function authDevPlugin(): Plugin {
   return {
     name: 'auth-dev-api',
@@ -296,7 +339,7 @@ export default defineConfig(({ mode }) => {
   Object.assign(process.env, loadEnv(mode, process.cwd(), ''))
 
   return {
-    plugins: [vue(), authDevPlugin(), aiProxyPlugin(), longbridgeDevApiPlugin()],
+    plugins: [vue(), marketDevApiPlugin(), authDevPlugin(), aiProxyPlugin(), longbridgeDevApiPlugin()],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))

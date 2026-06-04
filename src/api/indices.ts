@@ -24,15 +24,15 @@ const INDEX_LIST: Array<{ secid: string; code: string; name: string; region: str
   { secid: '100.N225', code: 'N225', name: '日经225', region: '日本', icon: '🇯🇵' },
 ]
 
-const EM_INDEX_URL = 'https://push2.eastmoney.com/api/qt/stock/get'
-
 export async function fetchIndices(): Promise<MarketIndex[]> {
   const tasks = INDEX_LIST.map(async (idx) => {
     try {
-      const url = `${EM_INDEX_URL}?secid=${idx.secid}&fields=f43,f169,f170,f58`
-      const r = await fetch(url, {
-        headers: { 'Referer': 'https://quote.eastmoney.com/' },
+      const params = new URLSearchParams({
+        mode: 'quote',
+        secid: idx.secid,
+        fields: 'f43,f169,f170,f58',
       })
+      const r = await fetch(`/api/market/eastmoney?${params.toString()}`)
       if (!r.ok) return null
       const json = await r.json() as { data?: { f43?: number; f169?: number; f170?: number; f58?: string } }
       const d = json.data

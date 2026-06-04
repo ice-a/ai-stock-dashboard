@@ -1,10 +1,7 @@
-// Yahoo Finance Provider
-// 通过 allorigins CORS 代理访问 Yahoo Finance v8 API
-// 无需认证，覆盖全球主要市场
 import type { Quote, KLineData, KLinePoint } from '../../types'
-import { parseLongportSymbol, toYahooSymbol } from '../symbolMap'
 import { getFallbackQuote } from '../../data/fallbackQuotes'
-import type { QuoteProvider, ProviderMeta, ProviderResult } from './types'
+import { parseLongportSymbol, toYahooSymbol } from '../symbolMap'
+import type { ProviderMeta, ProviderResult, QuoteProvider } from './types'
 
 const YAHOO_META: ProviderMeta = {
   id: 'yahoo',
@@ -13,87 +10,18 @@ const YAHOO_META: ProviderMeta = {
   needsAuth: false,
 }
 
-// CORS 代理列表（按优先级）
-const CORS_PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-]
-
-function yahooQuoteUrl(symbol: string): string {
-  const ysym = toYahooSymbol(symbol)
-  return `https://query1.finance.yahoo.com/v8/finance/chart/${ysym}?interval=1d&range=1d`
-}
-
-function yahooChartUrl(symbol: string, range: string = '1y', interval: string = '1d'): string {
-  const ysym = toYahooSymbol(symbol)
-  return `https://query1.finance.yahoo.com/v8/finance/chart/${ysym}?interval=${interval}&range=${range}`
-}
-
-async function fetchWithProxy(url: string, signal?: AbortSignal): Promise<any> {
-  const errors: string[] = []
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const r = await fetch(proxy + encodeURIComponent(url), {
-        signal,
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0',
-        },
-      })
-      if (!r.ok) {
-        errors.push(`${proxy}: HTTP ${r.status}`)
-        continue
-      }
-      const json = await r.json()
-      // allorigins 包装在 contents 里
-      if (json.contents) {
-        return JSON.parse(json.contents)
-      }
-      return json
-    } catch (e) {
-      errors.push(`${proxy}: ${(e as Error).message}`)
-    }
+async function fetchYahooChart(symbol: string, range = '1d', interval = '1d', signal?: AbortSignal): Promise<any> {
+  const params = new URLSearchParams({
+    symbol: toYahooSymbol(symbol),
+    range,
+    interval,
+  })
+  const response = await fetch(`/api/market/yahoo?${params.toString()}`, { signal })
+  const json = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(json?.error || `Yahoo ${response.status}`)
   }
-  throw new Error(`Yahoo fetch failed: ${errors.join('; ')}`)
-}
-
-function yahooChartToQuote(symbol: string, json: any): Quote {
-  try {
-    const result = json?.chart?.result?.[0]
-    if (!result) return emptyQuote(symbol, 'yahoo')
-    const meta = result.meta
-    const price = meta.regularMarketPrice ?? null
-    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null
-    return {
-      symbol,
-      yahooSymbol: toYahooSymbol(symbol),
-      name: meta.shortName || meta.symbol || parseLongportSymbol(symbol)?.code,
-      price,
-      prevClose,
-      change: price != null && prevClose != null && prevClose !== 0
-        ? (price - prevClose) / prevClose
-        : null,
-      changeAbs: price != null && prevClose != null ? price - prevClose : null,
-      dayHigh: null,
-      dayLow: null,
-      dayOpen: null,
-      volume: meta.regularMarketVolume ?? null,
-      currency: meta.currency || undefined,
-      marketState: meta.tradingPeriods ? 'REGULAR' : 'CLOSED',
-      marketCap: null,
-      fiftyTwoWeekHigh: null,
-      fiftyTwoWeekLow: null,
-      shortName: meta.shortName || undefined,
-      longName: meta.longName || undefined,
-      regularMarketTime: meta.regularMarketTime
-        ? (typeof meta.regularMarketTime === 'number' ? meta.regularMarketTime : Math.floor(new Date(meta.regularMarketTime).getTime() / 1000))
-        : null,
-      updatedAt: Date.now(),
-      source: 'yahoo',
-    }
-  } catch {
-    return emptyQuote(symbol, 'yahoo')
-  }
+  return json
 }
 
 function emptyQuote(symbol: string, source: Quote['source']): Quote {
@@ -123,13 +51,52 @@ function emptyQuote(symbol: string, source: Quote['source']): Quote {
   }
 }
 
+function yahooChartToQuote(symbol: string, json: any): Quote {
+  try {
+    const result = json?.chart?.result?.[0]
+    if (!result) return emptyQuote(symbol, 'yahoo')
+    const meta = result.meta
+    const price = meta.regularMarketPrice ?? null
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null
+    return {
+      symbol,
+      yahooSymbol: toYahooSymbol(symbol),
+      name: meta.shortName || meta.symbol || parseLongportSymbol(symbol)?.code,
+      price,
+      prevClose,
+      change: price != null && prevClose != null && prevClose !== 0 ? (price - prevClose) / prevClose : null,
+      changeAbs: price != null && prevClose != null ? price - prevClose : null,
+      dayHigh: null,
+      dayLow: null,
+      dayOpen: null,
+      volume: meta.regularMarketVolume ?? null,
+      currency: meta.currency || undefined,
+      marketState: meta.tradingPeriods ? 'REGULAR' : 'CLOSED',
+      marketCap: null,
+      fiftyTwoWeekHigh: null,
+      fiftyTwoWeekLow: null,
+      shortName: meta.shortName || undefined,
+      longName: meta.longName || undefined,
+      regularMarketTime: meta.regularMarketTime
+        ? (typeof meta.regularMarketTime === 'number'
+            ? meta.regularMarketTime
+            : Math.floor(new Date(meta.regularMarketTime).getTime() / 1000))
+        : null,
+      updatedAt: Date.now(),
+      source: 'yahoo',
+    }
+  } catch {
+    return emptyQuote(symbol, 'yahoo')
+  }
+}
+
 export const yahooProvider: QuoteProvider = {
   meta: YAHOO_META,
 
   async fetchQuote(symbol: string, options: { signal?: AbortSignal } = {}): Promise<ProviderResult<Quote>> {
     const t0 = performance.now()
     try {
-      const json = await fetchWithProxy(yahooQuoteUrl(symbol), options.signal)
+      const json = await fetchYahooChart(symbol, '1d', '1d', options.signal)
       const quote = yahooChartToQuote(symbol, json)
       return { ok: quote.price != null, data: quote, duration: performance.now() - t0, source: 'yahoo' }
     } catch (e) {
@@ -138,10 +105,9 @@ export const yahooProvider: QuoteProvider = {
   },
 
   async fetchQuotes(symbols: string[], options: { signal?: AbortSignal } = {}): Promise<ProviderResult<Quote[]>> {
-    // Yahoo v8 不支持批量，逐个获取
     const t0 = performance.now()
     try {
-      const results = await Promise.all(symbols.map(s => fetchWithProxy(yahooQuoteUrl(s), options.signal)))
+      const results = await Promise.all(symbols.map(s => fetchYahooChart(s, '1d', '1d', options.signal)))
       const out = symbols.map((s, i) => yahooChartToQuote(s, results[i]))
       return { ok: out.some(q => q.price != null), data: out, duration: performance.now() - t0, source: 'yahoo' }
     } catch (e) {
@@ -154,7 +120,7 @@ export const yahooProvider: QuoteProvider = {
     try {
       const interval = options.interval || '1d'
       const range = options.range || '1y'
-      const json = await fetchWithProxy(yahooChartUrl(symbol, range, interval), options.signal)
+      const json = await fetchYahooChart(symbol, range, interval, options.signal)
       const result = json?.chart?.result?.[0]
       if (!result?.timestamp?.length) {
         return { ok: false, data: null, error: 'no data', duration: performance.now() - t0, source: 'yahoo' }

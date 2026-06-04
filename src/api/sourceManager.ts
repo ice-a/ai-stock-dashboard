@@ -19,10 +19,10 @@ export type SourceHealth = {
 }
 
 const health: Record<string, SourceHealth> = {
-  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
-  eastmoney: { id: 'eastmoney', name: '东方财富', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   sina: { id: 'sina', name: '新浪财经', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
+  eastmoney: { id: 'eastmoney', name: '东方财富', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   yahoo: { id: 'yahoo', name: 'Yahoo Finance', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
+  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   static: { id: 'static', name: '静态快照', lastSuccess: Date.now(), lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
 }
 
@@ -75,14 +75,14 @@ function isProviderConfigured(p: QuoteProvider): boolean {
 }
 
 function resolveOrder(providers: QuoteProvider[], preferred?: string[]): string[] {
-  return (preferred || ['longport', 'eastmoney', 'sina', 'yahoo']).filter(id => {
+  return (preferred || ['sina', 'eastmoney', 'yahoo', 'longport']).filter(id => {
     const provider = providers.find(p => p.meta.id === id)
     return provider ? isProviderConfigured(provider) : false
   })
 }
 
 class SourceManager {
-  private providers: QuoteProvider[] = [longportProvider, eastmoneyProvider, sinaProvider, yahooProvider]
+  private providers: QuoteProvider[] = [sinaProvider, eastmoneyProvider, yahooProvider, longportProvider]
 
   list(): SourceHealth[] {
     return Object.values(health)
