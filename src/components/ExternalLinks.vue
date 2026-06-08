@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { longportQuoteUrl, yahooFinanceUrl, xueqiuUrl } from '../utils/linkBuilder'
+import { googleFinanceUrl, longportQuoteUrl, xueqiuUrl } from '../utils/linkBuilder'
 
 const props = defineProps<{ symbol: string; name?: string; size?: 'sm' | 'md' }>()
 
@@ -12,7 +12,7 @@ const isCN = computed(() => props.symbol.endsWith('.SH') || props.symbol.endsWit
 <template>
   <div class="ex" v-if="props.symbol">
     <a :href="longportQuoteUrl(props.symbol)" target="_blank" rel="noopener" class="link" :title="'长桥行情'">长桥</a>
-    <a :href="yahooFinanceUrl(props.symbol)" target="_blank" rel="noopener" class="link" :title="t('app.openInYahoo')">Yahoo</a>
+    <a :href="googleFinanceUrl(props.symbol)" target="_blank" rel="noopener" class="link" :title="t('app.openInGoogle')">Google</a>
     <a v-if="isCN" :href="xueqiuUrl(props.symbol)" target="_blank" rel="noopener" class="link" :title="t('app.openInXueqiu')">雪球</a>
   </div>
 </template>

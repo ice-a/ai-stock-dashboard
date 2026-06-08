@@ -1,10 +1,9 @@
-// 多源调度：按顺序尝试 长桥 → 新浪 → 东方财富 → Yahoo Finance → 静态 fallback
+// 多源调度：按顺序尝试 东方财富 → 新浪 → 长桥 → 静态 fallback
 import type { Quote, KLineData } from '../types'
 import { getFallbackQuote } from '../data/fallbackQuotes'
 import { longportProvider } from './sources/longportProvider'
 import { eastmoneyProvider } from './sources/eastmoneyProvider'
 import { sinaProvider } from './sources/sinaProvider'
-import { yahooProvider } from './sources/yahooProvider'
 import type { QuoteProvider, ProviderResult } from './sources/types'
 
 export type SourceHealth = {
@@ -19,10 +18,9 @@ export type SourceHealth = {
 }
 
 const health: Record<string, SourceHealth> = {
-  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
+  longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: false },
   sina: { id: 'sina', name: '新浪财经', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   eastmoney: { id: 'eastmoney', name: '东方财富', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
-  yahoo: { id: 'yahoo', name: 'Yahoo Finance', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   static: { id: 'static', name: '静态快照', lastSuccess: Date.now(), lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
 }
 
@@ -75,28 +73,43 @@ function isProviderConfigured(p: QuoteProvider): boolean {
 }
 
 function resolveOrder(providers: QuoteProvider[], preferred?: string[]): string[] {
-  return (preferred || ['longport', 'sina', 'eastmoney', 'yahoo']).filter(id => {
+  return (preferred || ['eastmoney', 'sina', 'longport']).filter(id => {
     const provider = providers.find(p => p.meta.id === id)
     return provider ? isProviderConfigured(provider) : false
   })
 }
 
 class SourceManager {
-  private providers: QuoteProvider[] = [longportProvider, sinaProvider, eastmoneyProvider, yahooProvider]
+  private providers: QuoteProvider[] = [eastmoneyProvider, sinaProvider, longportProvider]
 
   list(): SourceHealth[] {
     return Object.values(health)
   }
 
-  refreshConfigured() {
-    // No-op: all remaining providers are always configured
+  async refreshConfigured(signal?: AbortSignal) {
+    await Promise.all(this.providers.map(async (provider) => {
+      try {
+        await provider.refreshConfigured?.(signal)
+        const h = health[provider.meta.id]
+        if (h) {
+          h.configured = isProviderConfigured(provider)
+          if (h.configured && h.lastError?.includes('credentials are not configured')) h.lastError = null
+        }
+      } catch (e) {
+        const h = health[provider.meta.id]
+        if (h) {
+          h.configured = false
+          h.lastError = (e as Error).message
+        }
+      }
+    }))
   }
 
   async fetchQuote(
     symbol: string,
     options: { signal?: AbortSignal; preferred?: string[] } = {}
   ): Promise<Quote> {
-    this.refreshConfigured()
+    await this.refreshConfigured(options.signal)
     const order = resolveOrder(this.providers, options.preferred)
     if (order.length === 0) return staticFallback(symbol)
 
@@ -116,27 +129,37 @@ class SourceManager {
     symbols: string[],
     options: { signal?: AbortSignal; preferred?: string[] } = {}
   ): Promise<Quote[]> {
-    this.refreshConfigured()
+    await this.refreshConfigured(options.signal)
     const order = resolveOrder(this.providers, options.preferred)
     if (order.length === 0) return symbols.map(staticFallback)
+
+    const bySymbol = new Map<string, Quote>()
+    const missing = new Set(symbols)
 
     for (const id of order) {
       const provider = this.providers.find(p => p.meta.id === id)
       if (!provider?.fetchQuotes) continue
-      const result = await provider.fetchQuotes(symbols, { signal: options.signal })
+      const pendingSymbols = symbols.filter(symbol => missing.has(symbol))
+      if (pendingSymbols.length === 0) break
+      const result = await provider.fetchQuotes(pendingSymbols, { signal: options.signal })
       recordHealth(result, id)
-      if (result.ok && result.data && result.data.some(q => q.price != null)) {
-        return result.data
+      if (result.data) {
+        for (const q of result.data) {
+          if (q.price == null) continue
+          bySymbol.set(q.symbol, q)
+          missing.delete(q.symbol)
+        }
       }
     }
-    return symbols.map(staticFallback)
+
+    return symbols.map(symbol => bySymbol.get(symbol) || staticFallback(symbol))
   }
 
   async fetchKLine(
     symbol: string,
     options: { range?: string; interval?: string; signal?: AbortSignal; preferred?: string[] } = {}
   ): Promise<KLineData | null> {
-    this.refreshConfigured()
+    await this.refreshConfigured(options.signal)
     const order = resolveOrder(this.providers, options.preferred)
     for (const id of order) {
       const provider = this.providers.find(p => p.meta.id === id)

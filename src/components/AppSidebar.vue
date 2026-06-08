@@ -1,23 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { useSectorStore } from '../stores/sector'
-import StockSearch from './StockSearch.vue'
 
 const router = useRouter()
 const route = useRoute()
-const { t } = useI18n()
 const sectorStore = useSectorStore()
 
 const navItems = computed(() => [
-  { to: '/', label: '概览', icon: '◉' },
-  { to: '/sectors', label: '板块选择', icon: '⇄' },
-  { to: '/search', label: '自定义查询', icon: '⌕' },
-  { to: '/portfolio', label: '个人持仓', icon: '▦' },
-  { to: '/favorites', label: '自选股', icon: '★' },
-  { to: '/ask', label: 'AI 问答', icon: '✦' },
-  { to: '/settings', label: '设置', icon: '⚙' },
+  { to: '/', label: '概览', icon: 'OV' },
+  { to: '/sectors', label: '板块', icon: 'SC' },
+  { to: '/search', label: '个股搜索', icon: 'SE' },
+  { to: '/favorites', label: '自选股', icon: 'WL' },
+  { to: '/portfolio', label: '持仓', icon: 'PF' },
+  { to: '/user', label: '用户信息', icon: 'US' },
+  { to: '/ask', label: 'AI 问答', icon: 'AI' },
+  { to: '/mystic', label: '玄学选股', icon: 'MX' },
+  { to: '/settings', label: '设置', icon: 'ST' },
 ])
 
 function isActive(to: string) {
@@ -63,11 +62,6 @@ function switchSector(id: string) {
         </button>
         <router-link to="/sectors" class="topic-manage" @click="showTopicMenu = false">管理板块 →</router-link>
       </div>
-    </div>
-
-    <!-- 搜索 -->
-    <div class="search-area">
-      <StockSearch />
     </div>
 
     <nav>
@@ -178,9 +172,6 @@ function switchSector(id: string) {
 }
 .topic-manage:hover { text-decoration: underline; }
 
-.search-area {
-  margin-bottom: var(--space-3);
-}
 nav {
   display: flex;
   flex-direction: column;
@@ -222,11 +213,22 @@ nav {
   background: var(--color-link);
 }
 .ic {
-  display: inline-block;
-  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   text-align: center;
-  font-size: 14px;
-  opacity: 0.85;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.9;
+}
+.nav-item.active .ic {
+  border-color: color-mix(in srgb, var(--color-link) 45%, var(--color-border));
+  background: var(--color-info-bg);
 }
 @media (max-width: 900px) {
   .sb {
@@ -242,7 +244,6 @@ nav {
     background: var(--color-bg-elevated);
   }
   .topic-picker { display: none; }
-  .search-area { display: none; }
   nav {
     flex-direction: row;
     overflow-x: auto;

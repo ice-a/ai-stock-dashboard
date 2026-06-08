@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import ThemeToggle from './ThemeToggle.vue'
 import LangSwitch from './LangSwitch.vue'
 import RefreshIndicator from './RefreshIndicator.vue'
-import StockSearch from './StockSearch.vue'
+import { useAccountStore } from '../stores/account'
 
 const { t } = useI18n()
 const route = useRoute()
 const emit = defineEmits<{ (e: 'refresh'): void }>()
-const showSearch = ref(false)
+const account = useAccountStore()
 
 const subtitle = computed(() => {
   return t('app.subtitle')
@@ -18,6 +18,12 @@ const subtitle = computed(() => {
 
 const headerTitle = computed(() => {
   return (route.meta?.title as string) || t('app.title')
+})
+
+const accountLabel = computed(() => {
+  if (account.authenticated && account.user) return account.user
+  if (account.guest) return '游客'
+  return account.enabled ? '未登录' : '本地'
 })
 </script>
 
@@ -39,17 +45,8 @@ const headerTitle = computed(() => {
       </div>
     </div>
 
-    <!-- 搜索按钮（移动端可见） -->
-    <div class="hdr-search">
-      <button class="search-toggle" @click="showSearch = !showSearch" title="搜索股票">🔍</button>
-      <div v-if="showSearch" class="search-overlay" @click.self="showSearch = false">
-        <div class="search-modal">
-          <StockSearch />
-        </div>
-      </div>
-    </div>
-
     <div class="hdr-right">
+      <router-link to="/user" class="user-chip" :title="`用户：${accountLabel}`">{{ accountLabel }}</router-link>
       <RefreshIndicator @refresh="emit('refresh')" />
       <LangSwitch />
       <ThemeToggle />
@@ -58,41 +55,6 @@ const headerTitle = computed(() => {
 </template>
 
 <style scoped>
-.hdr-search {
-  position: relative;
-}
-.search-toggle {
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  min-width: 36px;
-  height: 36px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-.search-toggle:hover {
-  border-color: var(--color-link);
-  background: var(--color-info-bg);
-}
-.search-overlay {
-  position: fixed;
-  top: var(--header-height);
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.3);
-  z-index: 200;
-  display: flex;
-  justify-content: center;
-  padding-top: var(--space-4);
-}
-.search-modal {
-  width: 100%;
-  max-width: 480px;
-  padding: 0 var(--space-3);
-}
-
 .hdr {
   position: sticky;
   top: 0;
@@ -151,9 +113,31 @@ const headerTitle = computed(() => {
   gap: var(--space-2);
   flex-shrink: 0;
 }
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 120px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-chip:hover {
+  border-color: var(--color-border-strong);
+  text-decoration: none;
+}
 
 @media (max-width: 640px) {
   .subtitle { display: none; }
+  .user-chip { max-width: 72px; }
   .hdr { padding: 0 var(--space-3); }
   .title { font-size: var(--fs-md); }
 }

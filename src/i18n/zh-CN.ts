@@ -12,7 +12,6 @@ export default {
     showSource: '查看来源',
     addToFavorites: '加入收藏',
     removeFromFavorites: '取消收藏',
-    openInYahoo: '在 Yahoo Finance 打开',
     openInXueqiu: '在雪球打开',
     openInGoogle: '在 Google Finance 打开',
   },

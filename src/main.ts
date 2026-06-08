@@ -7,6 +7,8 @@ import { useRuntimeConfigStore } from './stores/runtimeConfig'
 import { useAIStore } from './stores/ai'
 import { useSettingsStore } from './stores/settings'
 import { useRefreshStore } from './stores/refresh'
+import { useAccountStore } from './stores/account'
+import { loadPersonalConfigFromCloud } from './utils/personalConfig'
 import './styles/main.css'
 
 const pinia = createPinia()
@@ -33,7 +35,23 @@ async function bootstrap() {
     refresh.setDetailInterval(runtimeConfig.config.refresh.detailInterval)
   }
 
+  const account = useAccountStore(pinia)
   app.mount('#app')
+
+  account.refresh({ timeoutMs: 2500 })
+    .then(async () => {
+      if (account.enabled && account.authenticated) {
+        await loadPersonalConfigFromCloud()
+        return
+      }
+      const current = router.currentRoute.value
+      if (account.enabled && !account.authenticated && !account.guest && current.meta?.public !== true) {
+        await router.replace({ path: '/login', query: { next: current.fullPath } })
+      }
+    })
+    .catch((e) => {
+      console.warn('[account] background account bootstrap failed:', e)
+    })
 }
 
 bootstrap()

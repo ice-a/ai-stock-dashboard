@@ -105,6 +105,40 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     holdings.value = []
   }
 
+  function exportJson(): string {
+    return JSON.stringify({ version: 1, holdings: holdings.value }, null, 2)
+  }
+
+  function importJson(json: string): { added: number; merged: number } {
+    try {
+      const parsed = JSON.parse(json)
+      if (!parsed || !Array.isArray(parsed.holdings)) return { added: 0, merged: 0 }
+      let added = 0
+      let merged = 0
+      const existingIds = new Set(holdings.value.map(item => item.id))
+      for (const item of parsed.holdings as PortfolioHolding[]) {
+        if (!item?.id || !item.symbol) continue
+        if (existingIds.has(item.id)) {
+          merged++
+          continue
+        }
+        holdings.value.push({
+          ...item,
+          fee: Number(item.fee) || 0,
+          buyPrice: Number(item.buyPrice) || 0,
+          quantity: Number(item.quantity) || 0,
+          createdAt: Number(item.createdAt) || Date.now(),
+          updatedAt: Number(item.updatedAt) || Date.now(),
+        })
+        existingIds.add(item.id)
+        added++
+      }
+      return { added, merged }
+    } catch {
+      return { added: 0, merged: 0 }
+    }
+  }
+
   watch(holdings, (value) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
   }, { deep: true })
@@ -118,5 +152,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     updateHolding,
     removeHolding,
     clear,
+    exportJson,
+    importJson,
   }
 })

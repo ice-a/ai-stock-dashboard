@@ -12,6 +12,17 @@ const EM_META: ProviderMeta = {
   needsAuth: false,
 }
 
+function rangeToCount(range?: string): number {
+  switch (range) {
+    case '1mo': return 45
+    case '3mo': return 90
+    case '6mo': return 180
+    case '1y': return 365
+    case '2y': return 730
+    default: return 365
+  }
+}
+
 function emptyQuote(symbol: string, source: Quote['source']): Quote {
   const fb = getFallbackQuote(symbol)
   return {
@@ -41,17 +52,17 @@ function emptyQuote(symbol: string, source: Quote['source']): Quote {
 
 function emToQuote(symbol: string, raw: any): Quote {
   if (!raw) return emptyQuote(symbol, 'eastmoney')
-  // A 股返回"分"需 /100，港美股返回实际价格不需 /100
   const p = parseLongportSymbol(symbol)
   const isAShare = p?.market === 'sh' || p?.market === 'sz'
-  const d = isAShare ? 100 : 1
-  const price = raw.f43 != null ? raw.f43 / d : null
-  const prevClose = raw.f60 != null ? raw.f60 / d : null
-  const change = raw.f170 != null ? raw.f170 / d : null
-  const changeAbs = raw.f169 != null ? raw.f169 / d : null
-  const dayHigh = raw.f44 != null ? raw.f44 / d : null
-  const dayLow = raw.f45 != null ? raw.f45 / d : null
-  const dayOpen = raw.f46 != null ? raw.f46 / d : null
+  // 东方财富：A 股价格字段为分，港/美股为千分之一；f170 为百分比 * 100。
+  const priceDivisor = isAShare ? 100 : 1000
+  const price = raw.f43 != null ? raw.f43 / priceDivisor : null
+  const prevClose = raw.f60 != null ? raw.f60 / priceDivisor : null
+  const changePct = raw.f170 != null ? raw.f170 / 10000 : null
+  const changeAbs = raw.f169 != null ? raw.f169 / priceDivisor : null
+  const dayHigh = raw.f44 != null ? raw.f44 / priceDivisor : null
+  const dayLow = raw.f45 != null ? raw.f45 / priceDivisor : null
+  const dayOpen = raw.f46 != null ? raw.f46 / priceDivisor : null
   const volume = raw.f47 ?? null
   const turnover = raw.f48 ?? null
   return {
@@ -60,7 +71,7 @@ function emToQuote(symbol: string, raw: any): Quote {
     name: raw.f58,
     price,
     prevClose,
-    change: change ?? (price != null && prevClose != null && prevClose !== 0 ? (price - prevClose) / prevClose : null),
+    change: changePct ?? (price != null && prevClose != null && prevClose !== 0 ? (price - prevClose) / prevClose : null),
     changeAbs,
     dayHigh,
     dayLow,
@@ -112,7 +123,11 @@ export const eastmoneyProvider: QuoteProvider = {
     try {
       const interval = options.interval || '1d'
       const klt = interval === '1d' ? 101 : interval === '1wk' ? 102 : interval === '1mo' ? 103 : 101
-      const rows = await eastmoney.fetchKLine(symbol, { klt, count: 365, fqt: 1, signal: options.signal })
+      const count = rangeToCount(options.range)
+      let rows = await eastmoney.fetchKLine(symbol, { klt, count, fqt: 1, signal: options.signal })
+      if (rows.length === 0) {
+        rows = await eastmoney.fetchKLine(symbol, { klt, count, fqt: 0, signal: options.signal })
+      }
       if (rows.length === 0) {
         return { ok: false, data: null, error: 'no data', duration: performance.now() - t0, source: 'eastmoney' }
       }

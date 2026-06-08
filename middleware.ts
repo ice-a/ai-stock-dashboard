@@ -8,6 +8,7 @@ const PUBLIC_PATHS = new Set([
 function shouldBypass(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
   if (pathname.startsWith('/api/auth/')) return true
+  if (pathname.startsWith('/api/account/')) return true
   if (pathname === '/api/config') return true
   if (pathname.startsWith('/assets/')) return true
   if (pathname.startsWith('/pwa-')) return true
@@ -17,6 +18,7 @@ function shouldBypass(pathname: string): boolean {
 
 const encoder = new TextEncoder()
 const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
+const USER_AUTH_COOKIE_DEFAULT = 'ai_dashboard_user'
 
 function getAuthCookieName(): string {
   return process.env.SITE_AUTH_COOKIE_NAME?.trim() || AUTH_COOKIE_DEFAULT
@@ -32,6 +34,20 @@ function isAuthEnabled(): boolean {
 
 function getAuthSecret(): string {
   return process.env.SITE_AUTH_SECRET?.trim() || getSitePassword()
+}
+
+function getUserAuthCookieName(): string {
+  return process.env.USER_AUTH_COOKIE_NAME?.trim() || USER_AUTH_COOKIE_DEFAULT
+}
+
+function getUserAuthSecret(): string {
+  return (
+    process.env.USER_AUTH_SECRET?.trim() ||
+    process.env.SITE_AUTH_SECRET?.trim() ||
+    getSitePassword() ||
+    process.env.MONGODB_URI?.trim() ||
+    ''
+  )
 }
 
 async function hmacHex(secret: string, message: string): Promise<string> {
@@ -75,14 +91,43 @@ async function verifySessionToken(token: string | null | undefined): Promise<boo
   return constantTimeEqual(signature, expected)
 }
 
+function decodeBase64Url(input: string): string {
+  let normalized = input.replace(/-/g, '+').replace(/_/g, '/')
+  while (normalized.length % 4) normalized += '='
+  return atob(normalized)
+}
+
+async function verifyUserSessionToken(token: string | null | undefined): Promise<boolean> {
+  if (!token) return false
+  const secret = getUserAuthSecret()
+  if (!secret) return false
+  const parts = token.split('.')
+  if (parts.length !== 2) return false
+  const [payload, signature] = parts
+  const expected = await hmacHex(secret, payload)
+  if (!constantTimeEqual(signature, expected)) return false
+  try {
+    const parsed = JSON.parse(decodeBase64Url(payload)) as { user?: string; exp?: number }
+    return Boolean(parsed.user && parsed.exp && parsed.exp >= Date.now())
+  } catch {
+    return false
+  }
+}
+
+async function isRequestAuthorized(request: Request): Promise<boolean> {
+  if (!isAuthEnabled()) return true
+  const cookie = request.headers.get('cookie')
+  if (await verifySessionToken(readCookie(cookie, getAuthCookieName()))) return true
+  return verifyUserSessionToken(readCookie(cookie, getUserAuthCookieName()))
+}
+
 export default async function middleware(request: Request): Promise<Response | void> {
   if (!isAuthEnabled()) return
 
   const url = new URL(request.url)
   if (shouldBypass(url.pathname)) return
 
-  const token = readCookie(request.headers.get('cookie'), getAuthCookieName())
-  if (await verifySessionToken(token)) {
+  if (await isRequestAuthorized(request)) {
     if (url.pathname === '/login') {
       return Response.redirect(new URL('/', url), 302)
     }

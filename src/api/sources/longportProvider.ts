@@ -1,7 +1,7 @@
 // 长桥 Provider
 import type { Quote, KLineData, KLinePoint } from '../../types'
 import { toLongportSymbol, parseLongportSymbol } from '../symbolMap'
-import { lpGetQuote, lpGetCandlesticks, type LPQuote } from '../longport'
+import { lpGetQuote, lpGetCandlesticks, fetchLongbridgeStatus, type LPQuote } from '../longport'
 import { getFallbackQuote } from '../../data/fallbackQuotes'
 import type { QuoteProvider, ProviderMeta, ProviderResult } from './types'
 
@@ -11,6 +11,11 @@ const LP_META: ProviderMeta = {
   region: 'global',
   needsAuth: true,
 }
+
+let configured = false
+let statusLoaded = false
+let disabledReason = ''
+let statusPromise: Promise<void> | null = null
 
 function lpQuoteToQuote(symbol: string, raw: LPQuote | null): Quote {
   if (!raw) {
@@ -69,11 +74,34 @@ function lpQuoteToQuote(symbol: string, raw: LPQuote | null): Quote {
 export const longportProvider: QuoteProvider = {
   meta: LP_META,
   isConfigured() {
-    return true
+    return configured
+  },
+
+  async refreshConfigured(signal?: AbortSignal) {
+    if (statusLoaded) return
+    if (statusPromise) return statusPromise
+    statusPromise = (async () => {
+      try {
+        const status = await fetchLongbridgeStatus(signal)
+        configured = status.configured
+        disabledReason = status.configured ? '' : (status.disabledReason || 'LongPort credentials are not configured.')
+      } catch (e) {
+        configured = false
+        disabledReason = (e as Error).message
+      } finally {
+        statusLoaded = true
+        statusPromise = null
+      }
+    })()
+    return statusPromise
   },
 
   async fetchQuote(symbol: string, options: { signal?: AbortSignal } = {}): Promise<ProviderResult<Quote>> {
     const t0 = performance.now()
+    if (!statusLoaded) await this.refreshConfigured?.(options.signal)
+    if (!configured) {
+      return { ok: false, data: lpQuoteToQuote(symbol, null), error: disabledReason || 'not configured', duration: performance.now() - t0, source: 'longport' }
+    }
     try {
       const arr = await lpGetQuote([symbol], null, options.signal)
       const raw = arr[0] || null
@@ -85,6 +113,10 @@ export const longportProvider: QuoteProvider = {
 
   async fetchQuotes(symbols: string[], options: { signal?: AbortSignal } = {}): Promise<ProviderResult<Quote[]>> {
     const t0 = performance.now()
+    if (!statusLoaded) await this.refreshConfigured?.(options.signal)
+    if (!configured) {
+      return { ok: false, data: symbols.map(s => lpQuoteToQuote(s, null)), error: disabledReason || 'not configured', duration: performance.now() - t0, source: 'longport' }
+    }
     try {
       const out: Quote[] = []
       for (let i = 0; i < symbols.length; i += 500) {
@@ -104,6 +136,10 @@ export const longportProvider: QuoteProvider = {
 
   async fetchKLine(symbol: string, options: { range?: string; interval?: string; signal?: AbortSignal } = {}): Promise<ProviderResult<KLineData | null>> {
     const t0 = performance.now()
+    if (!statusLoaded) await this.refreshConfigured?.(options.signal)
+    if (!configured) {
+      return { ok: false, data: null, error: disabledReason || 'not configured', duration: performance.now() - t0, source: 'longport' }
+    }
     try {
       const interval = options.interval || '1d'
       const period = interval === '1d' ? 'day' : interval === '1wk' ? 'week' : interval === '1mo' ? 'month' : 'day'

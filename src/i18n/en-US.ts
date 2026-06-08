@@ -12,7 +12,6 @@ export default {
     showSource: 'Source',
     addToFavorites: 'Add to favorites',
     removeFromFavorites: 'Remove from favorites',
-    openInYahoo: 'Open in Yahoo Finance',
     openInXueqiu: 'Open in Xueqiu',
     openInGoogle: 'Open in Google Finance',
   },

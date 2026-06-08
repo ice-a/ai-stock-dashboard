@@ -1,6 +1,7 @@
 // OpenAI 兼容的 Chat Completions 客户端
 // 支持 baseUrl + apiKey + model，可对接 OpenAI / Azure / DeepSeek / Moonshot / 智谱 / Ollama 等
 // 流式输出（SSE）
+import { APP_API_ROUTES, normalizeOpenAIBaseUrl } from '../config/endpoints'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -37,14 +38,24 @@ export interface ModelInfo {
   owned_by?: string
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  let u = baseUrl.trim().replace(/\/+$/, '')
-  // 兼容用户填的带 /v1 后缀或完整路径
-  if (u.includes('/chat/completions')) return u
-  if (/\/v\d+\/?$/.test(u)) return u
-  // 部分 API 提供商已有自己的路径前缀（如智谱 /api/paas/v4），不追加 /v1
-  if (/\/api\//.test(u)) return u
-  return u + '/v1'
+let chatCooldownUntil = 0
+
+function assertChatNotCoolingDown() {
+  const remaining = chatCooldownUntil - Date.now()
+  if (remaining > 0) {
+    throw new Error(`AI_RATE_LIMIT_COOLDOWN:${Math.ceil(remaining / 1000)}`)
+  }
+}
+
+async function throwApiError(prefix: string, response: Response): Promise<never> {
+  const text = await response.text()
+  if (response.status === 429) {
+    const retryAfter = Number(response.headers.get('retry-after'))
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60_000
+    chatCooldownUntil = Math.max(chatCooldownUntil, Date.now() + waitMs)
+    throw new Error(`AI_RATE_LIMIT:${Math.ceil(waitMs / 1000)}:${text.substring(0, 200)}`)
+  }
+  throw new Error(`${prefix} ${response.status}: ${text.substring(0, 200)}`)
 }
 
 // 开发环境通过 Vite 代理解决 CORS 问题
@@ -56,24 +67,54 @@ function getProxiedUrl(targetUrl: string): string {
     const base = url.origin
     const path = url.pathname.replace(/^\//, '')
     const b64 = btoa(base)
-    return `/api/ai-proxy/${b64}/${path}${url.search}`
+    return `${APP_API_ROUTES.aiDevProxy}/${b64}/${path}${url.search}`
   } catch {
     return targetUrl
   }
 }
 
+function normalizeModelList(json: unknown): ModelInfo[] {
+  const payload = json as { data?: unknown; models?: unknown; model?: unknown }
+  const rawList = Array.isArray(payload.data)
+    ? payload.data
+    : Array.isArray(payload.models)
+      ? payload.models
+      : null
+
+  if (rawList) {
+    return rawList
+      .map((item) => {
+        if (typeof item === 'string') return { id: item }
+        if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
+          return item as ModelInfo
+        }
+        return null
+      })
+      .filter((item): item is ModelInfo => Boolean(item?.id))
+  }
+
+  if (payload.model) {
+    if (typeof payload.model === 'string') return [{ id: payload.model }]
+    if (typeof payload.model === 'object' && typeof (payload.model as { id?: unknown }).id === 'string') {
+      return [payload.model as ModelInfo]
+    }
+  }
+
+  const preview = JSON.stringify(json).slice(0, 160)
+  throw new Error(`模型列表响应格式不正确：${preview}`)
+}
+
 export async function listModels(baseUrl: string, apiKey: string, signal?: AbortSignal): Promise<ModelInfo[]> {
   if (!apiKey) {
-    const r = await fetch('/api/ai/models', { signal })
+    const r = await fetch(APP_API_ROUTES.aiModels, { signal })
     if (!r.ok) {
       const text = await r.text()
       throw new Error(`Models ${r.status}: ${text.substring(0, 200)}`)
     }
-    const json = await r.json() as { data?: ModelInfo[] }
-    return json.data || []
+    return normalizeModelList(await r.json())
   }
 
-  const base = normalizeBaseUrl(baseUrl)
+  const base = normalizeOpenAIBaseUrl(baseUrl)
   const modelsUrl = `${base}/models`
   const url = import.meta.env.DEV ? getProxiedUrl(modelsUrl) : modelsUrl
   const r = await fetch(url, {
@@ -84,19 +125,18 @@ export async function listModels(baseUrl: string, apiKey: string, signal?: Abort
     signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Models ${r.status}: ${text.substring(0, 200)}`)
+    await throwApiError('Models', r)
   }
-  const json = (await r.json()) as { data?: ModelInfo[]; model?: ModelInfo }
-  return json.data || (json.model ? [json.model] : [])
+  return normalizeModelList(await r.json())
 }
 
 export async function chat(
   messages: ChatMessage[],
   options: ChatOptions
 ): Promise<ChatResponse> {
+  assertChatNotCoolingDown()
   if (!options.apiKey) {
-    const r = await fetch('/api/ai/chat', {
+    const r = await fetch(APP_API_ROUTES.aiChat, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -108,13 +148,12 @@ export async function chat(
       signal: options.signal,
     })
     if (!r.ok) {
-      const text = await r.text()
-      throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+      await throwApiError('Chat', r)
     }
     return r.json()
   }
 
-  const base = normalizeBaseUrl(options.baseUrl)
+  const base = normalizeOpenAIBaseUrl(options.baseUrl)
   const chatUrl = `${base}/chat/completions`
   const url = import.meta.env.DEV ? getProxiedUrl(chatUrl) : chatUrl
   const r = await fetch(url, {
@@ -133,8 +172,7 @@ export async function chat(
     signal: options.signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+    await throwApiError('Chat', r)
   }
   return r.json()
 }
@@ -143,10 +181,11 @@ export async function chat(
 export async function* chatStream(
   options: ChatOptions & { messages: ChatMessage[] }
 ): AsyncGenerator<string, void, void> {
+  assertChatNotCoolingDown()
   const { messages, ...rest } = options
 
   if (!rest.apiKey) {
-    const r = await fetch('/api/ai/chat-stream', {
+    const r = await fetch(APP_API_ROUTES.aiChatStream, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -158,14 +197,13 @@ export async function* chatStream(
       signal: rest.signal,
     })
     if (!r.ok) {
-      const text = await r.text()
-      throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+      await throwApiError('Chat', r)
     }
     yield* readSseStream(r)
     return
   }
 
-  const base = normalizeBaseUrl(rest.baseUrl)
+  const base = normalizeOpenAIBaseUrl(rest.baseUrl)
   const chatUrl = `${base}/chat/completions`
   const url = import.meta.env.DEV ? getProxiedUrl(chatUrl) : chatUrl
   const r = await fetch(url, {
@@ -184,8 +222,7 @@ export async function* chatStream(
     signal: rest.signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+    await throwApiError('Chat', r)
   }
   if (!r.body) {
     throw new Error('No response body')

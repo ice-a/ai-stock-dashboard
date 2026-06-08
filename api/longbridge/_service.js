@@ -3,10 +3,21 @@ import { gunzipSync } from 'node:zlib'
 import protobuf from 'protobufjs'
 import WebSocket from 'ws'
 
-const HTTP_URL = 'https://openapi.longportapp.com'
-const HTTP_URL_CN = 'https://openapi.longportapp.cn'
-const QUOTE_WS_URL = 'wss://openapi-quote.longportapp.com'
-const QUOTE_WS_URL_CN = 'wss://openapi-quote.longportapp.cn'
+const LONGPORT_ENDPOINTS = {
+  httpUrl: 'https://openapi.longportapp.com',
+  httpUrlCn: 'https://openapi.longportapp.cn',
+  quoteWsUrl: 'wss://openapi-quote.longportapp.com',
+  quoteWsUrlCn: 'wss://openapi-quote.longportapp.cn',
+  legacyHttpUrl: 'https://openapi.longbridge.com',
+  legacyHttpUrlCn: 'https://openapi.longbridge.cn',
+  legacyQuoteWsUrl: 'wss://openapi-quote.longbridge.com',
+  legacyQuoteWsUrlCn: 'wss://openapi-quote.longbridge.cn',
+}
+
+const HTTP_URL = LONGPORT_ENDPOINTS.httpUrl
+const HTTP_URL_CN = LONGPORT_ENDPOINTS.httpUrlCn
+const QUOTE_WS_URL = LONGPORT_ENDPOINTS.quoteWsUrl
+const QUOTE_WS_URL_CN = LONGPORT_ENDPOINTS.quoteWsUrlCn
 const REQUEST_TIMEOUT_MS = 8_000
 const CONNECT_TIMEOUT_MS = 4_000
 
@@ -124,15 +135,15 @@ function isChinaRegion() {
 
 function normalizeHttpUrl(url) {
   const clean = url.replace(/\/+$/, '')
-  if (clean === 'https://openapi.longbridge.com') return HTTP_URL
-  if (clean === 'https://openapi.longbridge.cn') return HTTP_URL_CN
+  if (clean === LONGPORT_ENDPOINTS.legacyHttpUrl) return HTTP_URL
+  if (clean === LONGPORT_ENDPOINTS.legacyHttpUrlCn) return HTTP_URL_CN
   return clean
 }
 
 function normalizeQuoteWsUrl(url) {
   const clean = url.replace(/\/+$/, '').replace(/\/v2$/i, '')
-  if (clean === 'wss://openapi-quote.longbridge.com') return QUOTE_WS_URL
-  if (clean === 'wss://openapi-quote.longbridge.cn') return QUOTE_WS_URL_CN
+  if (clean === LONGPORT_ENDPOINTS.legacyQuoteWsUrl) return QUOTE_WS_URL
+  if (clean === LONGPORT_ENDPOINTS.legacyQuoteWsUrlCn) return QUOTE_WS_URL_CN
   return clean
 }
 

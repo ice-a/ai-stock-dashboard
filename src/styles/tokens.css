@@ -84,11 +84,11 @@
   --color-cyan: #0891b2;
   --color-purple: #7c3aed;
 
-  --color-up: #16a34a;
-  --color-down: #dc2626;
+  --color-up: #dc2626;
+  --color-down: #16a34a;
   --color-flat: #6b7280;
-  --color-up-bg: rgba(22, 163, 74, 0.12);
-  --color-down-bg: rgba(220, 38, 38, 0.12);
+  --color-up-bg: rgba(220, 38, 38, 0.12);
+  --color-down-bg: rgba(22, 163, 74, 0.12);
 
   --color-chip-bg: #eef3f8;
   --color-chip-text: #334155;
@@ -137,11 +137,11 @@
   --color-cyan: #22d3ee;
   --color-purple: #a78bfa;
 
-  --color-up: #34d399;
-  --color-down: #f87171;
+  --color-up: #f87171;
+  --color-down: #34d399;
   --color-flat: #94a3b8;
-  --color-up-bg: rgba(52, 211, 153, 0.15);
-  --color-down-bg: rgba(248, 113, 113, 0.15);
+  --color-up-bg: rgba(248, 113, 113, 0.15);
+  --color-down-bg: rgba(52, 211, 153, 0.15);
 
   --color-chip-bg: #1e293b;
   --color-chip-text: #cbd5e1;

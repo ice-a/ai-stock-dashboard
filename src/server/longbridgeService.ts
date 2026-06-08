@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import protobuf from 'protobufjs'
 import WebSocket from 'ws'
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
+import { readLongportCredentials, readLongportEnv } from './env'
 
 export interface LongbridgeQuoteDto {
   symbol: string
@@ -37,10 +39,16 @@ export interface LongbridgeStatusDto {
 
 type Query = Record<string, string | number | boolean | undefined>
 
-const HTTP_URL = 'https://openapi.longportapp.com'
-const HTTP_URL_CN = 'https://openapi.longportapp.cn'
-const QUOTE_WS_URL = 'wss://openapi-quote.longportapp.com'
-const QUOTE_WS_URL_CN = 'wss://openapi-quote.longportapp.cn'
+const {
+  httpUrl: HTTP_URL,
+  httpUrlCn: HTTP_URL_CN,
+  quoteWsUrl: QUOTE_WS_URL,
+  quoteWsUrlCn: QUOTE_WS_URL_CN,
+  legacyHttpUrl: LEGACY_HTTP_URL,
+  legacyHttpUrlCn: LEGACY_HTTP_URL_CN,
+  legacyQuoteWsUrl: LEGACY_QUOTE_WS_URL,
+  legacyQuoteWsUrlCn: LEGACY_QUOTE_WS_URL_CN,
+} = EXTERNAL_ENDPOINTS.longport
 const REQUEST_TIMEOUT_MS = 8_000
 const CONNECT_TIMEOUT_MS = 4_000
 
@@ -128,24 +136,8 @@ const SecurityCandlestickRequest = protoRoot.lookupType('SecurityCandlestickRequ
 const SecurityCandlestickResponse = protoRoot.lookupType('SecurityCandlestickResponse')
 const ErrorMessage = protoRoot.lookupType('Error')
 
-function readEnv(name: string): string {
-  return process.env[name]?.trim() || ''
-}
-
-function hasLongportEnvGroup(prefix: 'LONGPORT' | 'LONGBRIDGE'): boolean {
-  return Boolean(readEnv(`${prefix}_APP_KEY`) || readEnv(`${prefix}_APP_SECRET`) || readEnv(`${prefix}_ACCESS_TOKEN`))
-}
-
-function readLongportEnv(name: string): string {
-  return readEnv(`LONGPORT_${name}`) || readEnv(`LONGBRIDGE_${name}`)
-}
-
 function getCredentials() {
-  const prefix = hasLongportEnvGroup('LONGPORT') ? 'LONGPORT' : 'LONGBRIDGE'
-  const appKey = readEnv(`${prefix}_APP_KEY`)
-  const appSecret = readEnv(`${prefix}_APP_SECRET`)
-  const accessToken = readEnv(`${prefix}_ACCESS_TOKEN`)
-  return { appKey, appSecret, accessToken }
+  return readLongportCredentials()
 }
 
 function getRegion(): string {
@@ -158,15 +150,15 @@ function isChinaRegion(): boolean {
 
 function normalizeHttpUrl(url: string): string {
   const clean = url.replace(/\/+$/, '')
-  if (clean === 'https://openapi.longbridge.com') return HTTP_URL
-  if (clean === 'https://openapi.longbridge.cn') return HTTP_URL_CN
+  if (clean === LEGACY_HTTP_URL) return HTTP_URL
+  if (clean === LEGACY_HTTP_URL_CN) return HTTP_URL_CN
   return clean
 }
 
 function normalizeQuoteWsUrl(url: string): string {
   const clean = url.replace(/\/+$/, '').replace(/\/v2$/i, '')
-  if (clean === 'wss://openapi-quote.longbridge.com') return QUOTE_WS_URL
-  if (clean === 'wss://openapi-quote.longbridge.cn') return QUOTE_WS_URL_CN
+  if (clean === LEGACY_QUOTE_WS_URL) return QUOTE_WS_URL
+  if (clean === LEGACY_QUOTE_WS_URL_CN) return QUOTE_WS_URL_CN
   return clean
 }
 

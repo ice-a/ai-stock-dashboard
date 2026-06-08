@@ -1,14 +1,14 @@
-// 个股详情数据：公告、新闻、ETF 持仓
-// A 股：东方财富 API（免费、CORS 友好）
-// 港美股：AI 生成摘要
+// 个股详情数据：公告、新闻、ETF 线索
+// 默认只加载可验证的数据源；AI 投资建议由用户手动触发。
 
 import { parseLongportSymbol } from './symbolMap'
 import type { StockNews, StockAnnouncement, ETFHolding, Market } from '../sectors/types'
+import { APP_API_ROUTES } from '../config/endpoints'
 import { useAIStore } from '../stores/ai'
 
 // ─── 东方财富：公告 ───
 
-const EM_NOTICE_URL = '/api/market?source=eastmoney&mode=announcements'
+const EM_NOTICE_URL = `${APP_API_ROUTES.market}?source=eastmoney&mode=announcements`
 
 function detectMarketCode(symbol: string): string {
   const p = parseLongportSymbol(symbol)
@@ -40,6 +40,7 @@ export async function fetchAnnouncements(symbol: string, pageSize = 10): Promise
       time: item.notice_date?.slice(0, 10) || '',
       url: `https://data.eastmoney.com/notices/detail/${code}/${item.art_code}.html`,
       type: item.columns?.[0]?.column_name || '',
+      generatedByAI: false,
     }))
   } catch {
     return []
@@ -48,97 +49,83 @@ export async function fetchAnnouncements(symbol: string, pageSize = 10): Promise
 
 // ─── 东方财富：新闻 ───
 
-const EM_SEARCH_URL = '/api/market?source=eastmoney&mode=news'
+const EM_SEARCH_URL = `${APP_API_ROUTES.market}?source=eastmoney&mode=news`
 
-export async function fetchNews(symbol: string, pageSize = 10): Promise<StockNews[]> {
-  const code = detectMarketCode(symbol)
-  if (!code) return []
+function uniqueKeywords(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map(v => (v || '').trim()).filter(Boolean))]
+}
+
+function stripHtml(text: string | undefined): string {
+  return (text || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+}
+
+export async function fetchNews(symbol: string, name?: string, pageSize = 10): Promise<StockNews[]> {
+  const parsed = parseLongportSymbol(symbol)
+  const keywords = uniqueKeywords([detectMarketCode(symbol), parsed?.code, name, symbol])
+  if (!keywords.length) return []
 
   try {
-    const param = JSON.stringify({
-      uid: '',
-      keyword: code,
-      type: ['cmsArticleWebOld'],
-      client: 'web',
-      client_type: 'web',
-      client_version: 'curr',
-      param: {
-        cmsArticleWebOld: {
-          searchScope: 'default',
-          sort: 'default',
-          pageIndex: 1,
-          pageSize,
-          preTag: '',
-          postTag: '',
-        },
-      },
-    })
-    const cbName = `cb_${Date.now()}`
-    const url = `${EM_SEARCH_URL}&cb=${cbName}&param=${encodeURIComponent(param)}`
+    const seen = new Set<string>()
+    const out: StockNews[] = []
 
-    const r = await fetch(url)
-    if (!r.ok) return []
-    const json = await r.json() as {
-      result?: {
-        cmsArticleWebOld?: Array<{
-          title: string
-          date: string
-          url: string
-          mediaName?: string
-          content?: string
-        }>
+    for (const keyword of keywords) {
+      const param = JSON.stringify({
+        uid: '',
+        keyword,
+        type: ['cmsArticleWebOld'],
+        client: 'web',
+        client_type: 'web',
+        client_version: 'curr',
+        param: {
+          cmsArticleWebOld: {
+            searchScope: 'default',
+            sort: 'default',
+            pageIndex: 1,
+            pageSize,
+            preTag: '',
+            postTag: '',
+          },
+        },
+      })
+      const cbName = `cb_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const url = `${EM_SEARCH_URL}&cb=${cbName}&param=${encodeURIComponent(param)}`
+
+      const r = await fetch(url)
+      if (!r.ok) continue
+      const json = await r.json() as {
+        result?: {
+          cmsArticleWebOld?: Array<{
+            title: string
+            date: string
+            url: string
+            mediaName?: string
+            content?: string
+          }>
+        }
+      }
+
+      for (const item of json.result?.cmsArticleWebOld || []) {
+        const title = stripHtml(item.title)
+        const url = item.url || ''
+        const key = url || title
+        if (!title || seen.has(key)) continue
+        seen.add(key)
+        out.push({
+          title,
+          source: item.mediaName || '东方财富',
+          time: item.date?.slice(0, 10) || '',
+          url,
+          summary: stripHtml(item.content).slice(0, 120),
+          generatedByAI: false,
+        })
+        if (out.length >= pageSize) return out
       }
     }
-    return (json.result?.cmsArticleWebOld || []).map(item => ({
-      title: item.title.replace(/<[^>]+>/g, ''),
-      source: item.mediaName || '东方财富',
-      time: item.date?.slice(0, 10) || '',
-      url: item.url,
-      summary: item.content?.replace(/<[^>]+>/g, '').slice(0, 120) || '',
-    }))
+    return out
   } catch {
     return []
   }
 }
-
-// ─── AI 生成：港美股新闻/公告/ETF ───
-
-const STOCK_DETAIL_PROMPT = `你是一位专业的股票分析师。请为以下股票生成综合分析报告。
-
-股票代码: {symbol}
-股票名称: {name}
-所属市场: {market}
-
-请严格按以下 JSON 格式返回（不要有其他文字）:
-{
-  "news": [
-    { "title": "新闻标题", "source": "来源", "time": "2026-06-01", "summary": "摘要（50字内）" }
-  ],
-  "announcements": [
-    { "title": "公告标题", "time": "2026-06-01", "type": "公告类型" }
-  ],
-  "etfs": [
-    { "etfSymbol": "ETF代码", "etfName": "ETF名称", "weight": 5.2, "market": "美股" }
-  ],
-  "advice": {
-    "rating": "买入/持有/观望/减持",
-    "targetPrice": 150.0,
-    "currentPrice": 120.0,
-    "timeframe": "3-6个月",
-    "confidence": "高/中/低",
-    "summary": "一句话核心结论",
-    "reasons": ["理由1", "理由2", "理由3"],
-    "risks": ["风险1", "风险2"],
-    "klineAnalysis": "基于近期K线形态的技术面分析（如均线、MACD、成交量等）",
-    "catalysts": ["近期催化剂1", "催化剂2"]
-  }
-}
-
-注意:
-1. news: 最近 3-5 条重要新闻
-2. announcements: 最近 3-5 条重要公告（如无则留空数组）
-3. etfs: 持有该股票的 3-5 只主要 ETF（包含持仓占比）
-4. advice: 综合投资建议，包含目标价、评级、理由、风险、技术面分析`
 
 export interface AIAdvice {
   rating: string
@@ -153,61 +140,53 @@ export interface AIAdvice {
   catalysts: string[]
 }
 
-interface AIGeneratedDetail {
-  news: StockNews[]
-  announcements: StockAnnouncement[]
-  etfs: ETFHolding[]
-  advice: AIAdvice | null
-}
-
-export async function fetchStockDetailAI(
-  symbol: string,
-  name: string,
-  market: Market,
-): Promise<AIGeneratedDetail> {
-  const ai = useAIStore()
-  if (!ai.hasCredentials) {
-    return { news: [], announcements: [], etfs: [], advice: null }
-  }
-
-  const prompt = STOCK_DETAIL_PROMPT
-    .replace('{symbol}', symbol)
-    .replace('{name}', name)
-    .replace('{market}', market)
-
-  try {
-    const { chat } = await import('./ai')
-    const resp = await chat(
-      [
-        { role: 'system', content: '你是专业的股票分析师，只输出 JSON，不要有其他文字。' },
-        { role: 'user', content: prompt },
-      ],
-      {
-        baseUrl: ai.baseUrl,
-        apiKey: ai.apiKey,
-        model: ai.model,
-        temperature: 0.3,
-        maxTokens: 3000,
-      },
-    )
-
-    const text = resp.choices?.[0]?.message?.content || ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { news: [], announcements: [], etfs: [], advice: null }
-
-    const parsed = JSON.parse(jsonMatch[0])
-    return {
-      news: Array.isArray(parsed.news) ? parsed.news : [],
-      announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
-      etfs: Array.isArray(parsed.etfs) ? parsed.etfs : [],
-      advice: parsed.advice || null,
-    }
-  } catch {
-    return { news: [], announcements: [], etfs: [], advice: null }
-  }
-}
-
 // ─── 独立：AI 投资建议（含 K 线数据） ───
+
+function extractJsonObject(text: string): string | null {
+  const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const start = cleaned.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return cleaned.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean).slice(0, 6)
+  if (typeof value === 'string' && value.trim()) return [value.trim()]
+  return []
+}
+
+function normalizeAdvice(value: Partial<AIAdvice>, currentPrice: number | null): AIAdvice {
+  return {
+    rating: value.rating || '观望',
+    targetPrice: typeof value.targetPrice === 'number' ? value.targetPrice : null,
+    currentPrice: typeof value.currentPrice === 'number' ? value.currentPrice : currentPrice,
+    timeframe: value.timeframe || '3-6个月',
+    confidence: value.confidence || '中',
+    summary: value.summary || 'AI 未返回核心结论。',
+    reasons: asStringArray(value.reasons),
+    risks: asStringArray(value.risks),
+    klineAnalysis: value.klineAnalysis || '',
+    catalysts: asStringArray(value.catalysts),
+  }
+}
 
 export async function fetchStockAdviceAI(
   symbol: string,
@@ -216,7 +195,9 @@ export async function fetchStockAdviceAI(
   klinePoints: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>,
 ): Promise<AIAdvice | null> {
   const ai = useAIStore()
-  if (!ai.hasCredentials) return null
+  if (!ai.isConfigured) {
+    throw new Error('请先在设置页配置 AI Base URL、API Key 和模型。')
+  }
 
   // 构建 K 线摘要
   let klineSummary = ''
@@ -261,29 +242,63 @@ ${klineSummary}
   "catalysts": ["近期催化剂1", "催化剂2"]
 }`
 
-  try {
-    const { chat } = await import('./ai')
-    const resp = await chat(
-      [
-        { role: 'system', content: '你是专业的股票分析师，只输出 JSON，不要有其他文字。' },
-        { role: 'user', content: prompt },
-      ],
-      {
-        baseUrl: ai.baseUrl,
-        apiKey: ai.apiKey,
-        model: ai.model,
-        temperature: 0.3,
-        maxTokens: 2000,
-      },
-    )
+  const { chat } = await import('./ai')
+  const resp = await chat(
+    [
+      { role: 'system', content: '你是专业的股票分析师，只输出 JSON，不要有其他文字。' },
+      { role: 'user', content: prompt },
+    ],
+    {
+      baseUrl: ai.baseUrl,
+      apiKey: ai.apiKey,
+      model: ai.model,
+      temperature: 0.3,
+      maxTokens: 1600,
+    },
+  )
 
-    const text = resp.choices?.[0]?.message?.content || ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
-    return JSON.parse(jsonMatch[0]) as AIAdvice
+  const text = resp.choices?.[0]?.message?.content || ''
+  const jsonText = extractJsonObject(text)
+  if (!jsonText) throw new Error('AI 返回格式错误：没有找到 JSON 对象。请稍后重试或切换模型。')
+  try {
+    return normalizeAdvice(JSON.parse(jsonText) as Partial<AIAdvice>, klinePoints.at(-1)?.close ?? null)
   } catch {
-    return null
+    throw new Error('AI 返回格式错误：JSON 解析失败。请稍后重试或切换模型。')
   }
+}
+
+function relatedEtfs(symbol: string, name: string, market: Market): ETFHolding[] {
+  const parsed = parseLongportSymbol(symbol)
+  const blob = `${symbol} ${name}`.toLowerCase()
+  const out: ETFHolding[] = []
+
+  if (market === 'A股' || parsed?.market === 'sh' || parsed?.market === 'sz') {
+    out.push(
+      { etfSymbol: '510300.SH', etfName: '沪深300ETF', market: 'A股' },
+      { etfSymbol: '512480.SH', etfName: '半导体ETF', market: 'A股' },
+      { etfSymbol: '515050.SH', etfName: '5G通信ETF', market: 'A股' },
+    )
+  } else if (market === '港股' || parsed?.market === 'hk') {
+    out.push(
+      { etfSymbol: '02800.HK', etfName: '盈富基金', market: '港股' },
+      { etfSymbol: '03033.HK', etfName: '南方恒生科技', market: '港股' },
+      { etfSymbol: '03067.HK', etfName: '安硕恒生科技', market: '港股' },
+    )
+  } else {
+    out.push(
+      { etfSymbol: 'SPY.US', etfName: 'SPDR S&P 500 ETF', market: '美股' },
+      { etfSymbol: 'QQQ.US', etfName: 'Invesco QQQ Trust', market: '美股' },
+      { etfSymbol: 'VTI.US', etfName: 'Vanguard Total Stock Market ETF', market: '美股' },
+    )
+  }
+
+  if (/(nvda|amd|avgo|tsm|asml|半导体|芯片|台积电|英伟达|中芯|寒武纪)/i.test(blob)) {
+    out.unshift({ etfSymbol: 'SOXX.US', etfName: 'iShares Semiconductor ETF', market: '美股' })
+  }
+  if (/(新能源|tesla|tsla|比亚迪|宁德|隆基|光伏|电池)/i.test(blob)) {
+    out.unshift({ etfSymbol: 'ICLN.US', etfName: 'iShares Global Clean Energy ETF', market: '美股' })
+  }
+  return out.slice(0, 4)
 }
 
 // ─── 统一入口 ───
@@ -302,22 +317,15 @@ export async function fetchStockFullDetail(
 ): Promise<StockFullDetail> {
   const parsed = parseLongportSymbol(symbol)
   const isAShare = parsed?.market === 'sh' || parsed?.market === 'sz'
+  const [news, announcements] = await Promise.all([
+    fetchNews(symbol, name),
+    isAShare ? fetchAnnouncements(symbol) : Promise.resolve([]),
+  ])
 
-  if (isAShare) {
-    // A 股：东方财富 API + AI 分析
-    const [news, announcements, aiDetail] = await Promise.all([
-      fetchNews(symbol),
-      fetchAnnouncements(symbol),
-      fetchStockDetailAI(symbol, name, market),
-    ])
-    return {
-      news: news.length ? news : aiDetail.news,
-      announcements: announcements.length ? announcements : aiDetail.announcements,
-      etfs: aiDetail.etfs,
-      advice: aiDetail.advice,
-    }
+  return {
+    news,
+    announcements,
+    etfs: relatedEtfs(symbol, name, market),
+    advice: null,
   }
-
-  // 港美股：全部 AI 生成
-  return fetchStockDetailAI(symbol, name, market)
 }

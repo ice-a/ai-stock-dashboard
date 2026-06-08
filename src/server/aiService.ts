@@ -1,4 +1,6 @@
 import type { ChatMessage, ChatResponse, ModelInfo } from '../api/ai'
+import { normalizeOpenAIBaseUrl } from '../config/endpoints'
+import { hasServerAiConfig, readAiConfig } from './env'
 
 export interface ServerChatOptions {
   model?: string
@@ -7,33 +9,30 @@ export interface ServerChatOptions {
   stream?: boolean
 }
 
-function readEnv(name: string): string {
-  return process.env[name]?.trim() || ''
+interface UpstreamError extends Error {
+  statusCode?: number
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
-  let u = baseUrl.trim().replace(/\/+$/, '')
-  if (u.includes('/chat/completions')) return u
-  if (/\/v\d+\/?$/.test(u)) return u
-  if (/\/api\//.test(u)) return u
-  return u + '/v1'
+async function throwUpstreamError(prefix: string, response: Response): Promise<never> {
+  const text = await response.text()
+  const error = new Error(`${prefix} ${response.status}: ${text.substring(0, 200)}`) as UpstreamError
+  error.statusCode = response.status
+  throw error
 }
 
 function getAiConfig() {
-  const apiKey = readEnv('AI_API_KEY') || readEnv('OPENAI_API_KEY')
-  const baseUrl = readEnv('AI_BASE_URL') || readEnv('OPENAI_BASE_URL') || 'https://api.openai.com/v1'
-  const model = readEnv('AI_MODEL') || readEnv('OPENAI_MODEL')
+  const { apiKey, baseUrl, model, temperature, maxTokens } = readAiConfig()
   if (!apiKey) throw new Error('AI_API_KEY or OPENAI_API_KEY is not configured.')
-  return { apiKey, baseUrl, model }
+  return { apiKey, baseUrl, model, temperature, maxTokens }
 }
 
 export function hasServerAIConfig(): boolean {
-  return Boolean(readEnv('AI_API_KEY') || readEnv('OPENAI_API_KEY'))
+  return hasServerAiConfig()
 }
 
 export async function listServerModels(signal?: AbortSignal): Promise<ModelInfo[]> {
   const config = getAiConfig()
-  const r = await fetch(`${normalizeBaseUrl(config.baseUrl)}/models`, {
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/models`, {
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       'Content-Type': 'application/json',
@@ -41,8 +40,7 @@ export async function listServerModels(signal?: AbortSignal): Promise<ModelInfo[
     signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Models ${r.status}: ${text.substring(0, 200)}`)
+    await throwUpstreamError('Models', r)
   }
   const json = await r.json() as { data?: ModelInfo[]; model?: ModelInfo }
   return json.data || (json.model ? [json.model] : [])
@@ -53,7 +51,7 @@ export async function chatServer(messages: ChatMessage[], options: ServerChatOpt
   const model = options.model || config.model
   if (!model) throw new Error('AI_MODEL or OPENAI_MODEL is not configured.')
 
-  const r = await fetch(`${normalizeBaseUrl(config.baseUrl)}/chat/completions`, {
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -62,15 +60,14 @@ export async function chatServer(messages: ChatMessage[], options: ServerChatOpt
     body: JSON.stringify({
       model,
       messages,
-      temperature: options.temperature ?? Number(readEnv('AI_TEMPERATURE') || 0.7),
-      max_tokens: options.maxTokens ?? Number(readEnv('AI_MAX_TOKENS') || 2000),
+      temperature: options.temperature ?? config.temperature,
+      max_tokens: options.maxTokens ?? config.maxTokens,
       stream: false,
     }),
     signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+    await throwUpstreamError('Chat', r)
   }
   return r.json()
 }
@@ -80,7 +77,7 @@ export async function streamServerChat(messages: ChatMessage[], options: ServerC
   const model = options.model || config.model
   if (!model) throw new Error('AI_MODEL or OPENAI_MODEL is not configured.')
 
-  const r = await fetch(`${normalizeBaseUrl(config.baseUrl)}/chat/completions`, {
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -89,15 +86,14 @@ export async function streamServerChat(messages: ChatMessage[], options: ServerC
     body: JSON.stringify({
       model,
       messages,
-      temperature: options.temperature ?? Number(readEnv('AI_TEMPERATURE') || 0.7),
-      max_tokens: options.maxTokens ?? Number(readEnv('AI_MAX_TOKENS') || 2000),
+      temperature: options.temperature ?? config.temperature,
+      max_tokens: options.maxTokens ?? config.maxTokens,
       stream: true,
     }),
     signal,
   })
   if (!r.ok) {
-    const text = await r.text()
-    throw new Error(`Chat ${r.status}: ${text.substring(0, 200)}`)
+    await throwUpstreamError('Chat', r)
   }
   return r
 }

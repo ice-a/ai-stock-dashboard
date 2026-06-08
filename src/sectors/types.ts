@@ -28,6 +28,7 @@ export interface StockNews {
   time: string
   url: string
   summary?: string
+  generatedByAI?: boolean
 }
 
 export interface StockAnnouncement {
@@ -35,6 +36,7 @@ export interface StockAnnouncement {
   time: string
   url: string
   type?: string            // 公告类型
+  generatedByAI?: boolean
 }
 
 export interface ETFHolding {
@@ -42,6 +44,7 @@ export interface ETFHolding {
   etfName: string
   weight?: number          // 持仓占比
   market: Market
+  generatedByAI?: boolean
 }
 
 export interface StockDetail {

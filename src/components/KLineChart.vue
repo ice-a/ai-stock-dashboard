@@ -39,6 +39,8 @@ const props = defineProps<{
 const settings = useSettingsStore()
 const chartRef = ref<InstanceType<typeof VChart> | null>(null)
 const isDark = computed(() => settings.theme === 'dark' || (settings.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+const upColor = computed(() => isDark.value ? '#f87171' : '#dc2626')
+const downColor = computed(() => isDark.value ? '#34d399' : '#16a34a')
 
 // 计算 MA 均线
 function calculateMA(dayCount: number, data: typeof props.data) {
@@ -64,8 +66,8 @@ const option = computed(() => {
     value: d.volume,
     itemStyle: {
       color: d.close >= d.open
-        ? (isDark.value ? 'rgba(52,211,153,0.6)' : 'rgba(22,163,74,0.6)')
-        : (isDark.value ? 'rgba(248,113,113,0.6)' : 'rgba(220,38,38,0.6)')
+        ? (isDark.value ? 'rgba(248,113,113,0.6)' : 'rgba(220,38,38,0.6)')
+        : (isDark.value ? 'rgba(52,211,153,0.6)' : 'rgba(22,163,74,0.6)')
     }
   }))
   const ma5 = calculateMA(5, props.data)
@@ -152,10 +154,10 @@ const option = computed(() => {
         type: 'candlestick',
         data: klineData,
         itemStyle: {
-          color: isDark.value ? '#34d399' : '#16a34a',
-          color0: isDark.value ? '#f87171' : '#dc2626',
-          borderColor: isDark.value ? '#34d399' : '#16a34a',
-          borderColor0: isDark.value ? '#f87171' : '#dc2626',
+          color: upColor.value,
+          color0: downColor.value,
+          borderColor: upColor.value,
+          borderColor0: downColor.value,
         }
       },
       { name: 'MA5', type: 'line', data: ma5, smooth: true, showSymbol: false, lineStyle: { width: 1, color: '#fbbf24' } },

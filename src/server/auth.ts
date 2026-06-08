@@ -1,13 +1,14 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { readAuthCookieName, readAuthSecret, readPositiveIntegerEnv, readSitePassword } from './env'
 
 export const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
 
 export function getAuthCookieName(): string {
-  return process.env.SITE_AUTH_COOKIE_NAME?.trim() || AUTH_COOKIE_DEFAULT
+  return readAuthCookieName()
 }
 
 export function getSitePassword(): string {
-  return process.env.SITE_PASSWORD?.trim() || process.env.APP_PASSWORD?.trim() || ''
+  return readSitePassword()
 }
 
 export function isAuthEnabled(): boolean {
@@ -15,13 +16,11 @@ export function isAuthEnabled(): boolean {
 }
 
 export function getAuthMaxAgeSeconds(): number {
-  const raw = Number(process.env.SITE_AUTH_MAX_AGE_SECONDS)
-  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw)
-  return 7 * 24 * 60 * 60
+  return readPositiveIntegerEnv('SITE_AUTH_MAX_AGE_SECONDS', 7 * 24 * 60 * 60)
 }
 
 function getAuthSecret(): string {
-  return process.env.SITE_AUTH_SECRET?.trim() || getSitePassword()
+  return readAuthSecret()
 }
 
 function hmacHex(secret: string, message: string): string {

@@ -35,8 +35,8 @@ export async function generateSectorStocks(
   maxStocks: number = 30,
 ): Promise<SectorGenerateResponse> {
   const ai = useAIStore()
-  if (!ai.hasCredentials) {
-    throw new Error('请先配置 AI 模型（设置页面）')
+  if (!ai.isConfigured) {
+    throw new Error('请先在设置页配置 AI Base URL、API Key 和模型。')
   }
 
   const prompt = SECTOR_PROMPT
@@ -79,8 +79,8 @@ export async function analyzeStockAI(
   context: string,
 ): Promise<string> {
   const ai = useAIStore()
-  if (!ai.hasCredentials) {
-    throw new Error('请先配置 AI 模型')
+  if (!ai.isConfigured) {
+    throw new Error('请先在设置页配置 AI Base URL、API Key 和模型。')
   }
 
   const { chatStream } = await import('./ai')

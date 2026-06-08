@@ -35,6 +35,19 @@ export interface ParsedSymbol {
   regionEn: string     // 英文: US / CN / HK
 }
 
+const YAHOO_SUFFIX: Partial<Record<ParsedSymbol['market'], string>> = {
+  hk: '.HK',
+  sh: '.SS',
+  sz: '.SZ',
+  jp: '.T',
+  kr: '.KS',
+  tw: '.TW',
+  uk: '.L',
+  in: '.NS',
+  au: '.AX',
+  my: '.KL',
+}
+
 const REGION_LABEL: Record<ParsedSymbol['market'], { zh: string; en: string }> = {
   us: { zh: '美股', en: 'US' },
   hk: { zh: '港股', en: 'HK' },
@@ -75,7 +88,7 @@ export function parseLongportSymbol(symbol: string): ParsedSymbol | null {
         code,
         market,
         longport: symbol,
-        eastmoneySecid: EASTMONEY_SECID_PREFIX[market] + code,
+        eastmoneySecid: EASTMONEY_SECID_PREFIX[market] + (market === 'hk' ? paddedHKKr : code),
         sinaCode: market === 'us' ? 'gb_' + code.toLowerCase()
                 : (market === 'sh' || market === 'sz') ? market + code
                 : (market === 'hk') ? 'hk' + paddedHKKr
@@ -94,11 +107,18 @@ export function parseLongportSymbol(symbol: string): ParsedSymbol | null {
 
 // 兼容旧 API
 export function toYahooSymbol(symbol: string): string {
-  // 长桥符号本身就是 Yahoo 兼容的（除了 .SH → .SS）
   const p = parseLongportSymbol(symbol)
   if (!p) return symbol.toUpperCase()
-  if (p.market === 'sh') return p.code + '.SS'
-  return p.code + symbol.toUpperCase().slice(-3)
+  if (p.market === 'us') return p.code
+  const suffix = YAHOO_SUFFIX[p.market]
+  if (suffix == null) return symbol.toUpperCase()
+  return `${p.code}${suffix}`
+}
+
+export function isYahooQuoteSupported(symbol: string): boolean {
+  const p = parseLongportSymbol(symbol)
+  if (!p) return false
+  return p.market === 'us' || YAHOO_SUFFIX[p.market] != null
 }
 
 export function isLikelySupported(symbol: string): boolean {

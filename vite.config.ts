@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 import type { Plugin } from 'vite'
+import { APP_API_ROUTES, EXTERNAL_ENDPOINTS } from './src/config/endpoints'
 
 // AI API CORS 代理插件
 // 请求格式: /api/ai-proxy/{base64_target}/{path}
@@ -9,7 +10,7 @@ function aiProxyPlugin(): Plugin {
   return {
     name: 'ai-proxy',
     configureServer(server) {
-      server.middlewares.use('/api/ai-proxy', async (req, res) => {
+      server.middlewares.use(APP_API_ROUTES.aiDevProxy, async (req, res) => {
         const url = req.url || ''
         // 解析 base64 target 和路径
         const cleanUrl = url.startsWith('/') ? url.slice(1) : url
@@ -151,7 +152,7 @@ function marketDevApiPlugin(): Plugin {
   return {
     name: 'market-dev-api',
     configureServer(server) {
-      server.middlewares.use('/api/market', async (req, res) => {
+      server.middlewares.use(APP_API_ROUTES.market, async (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost')
         const query: Record<string, string> = {}
         url.searchParams.forEach((value, key) => {
@@ -165,7 +166,7 @@ function marketDevApiPlugin(): Plugin {
 
         try {
           const source = query.source || url.pathname.replace(/^\/+/, '')
-          if (!['eastmoney', 'sina', 'yahoo'].includes(source)) {
+          if (!['eastmoney', 'sina'].includes(source)) {
             sendJson(404, { error: 'Not found' })
             return
           }
@@ -191,29 +192,80 @@ function authDevPlugin(): Plugin {
         const url = new URL(req.url || '/', 'http://localhost')
         const auth = await import('./src/server/auth.ts')
 
-        const sendJson = (status: number, payload: unknown, headers: Record<string, string> = {}) => {
+        const sendJson = (status: number, payload: unknown, headers: Record<string, string | string[]> = {}) => {
           res.writeHead(status, { 'Content-Type': 'application/json', ...headers })
           res.end(JSON.stringify(payload))
         }
 
-        if (url.pathname === '/api/auth/status') {
+        const runApiRoute = async (loader: () => Promise<{ default: Function }>) => {
+          const headers: Record<string, string | string[]> = {}
+          const mod = await loader()
+          await mod.default(
+            { method: req.method, headers: req.headers, on: req.on.bind(req) },
+            {
+              setHeader: (name: string, value: string | string[]) => { headers[name] = value },
+              status: (code: number) => ({
+                json: (payload: unknown) => sendJson(code, payload, headers),
+              }),
+            },
+          )
+        }
+
+        const isRequestAuthorized = async () => {
+          if (!auth.isAuthEnabled()) return true
+          if (await auth.verifySessionToken(auth.getAuthTokenFromCookie(req.headers.cookie))) return true
+          try {
+            const account = await import('./src/server/userAuth.ts')
+            return Boolean(await account.getUserFromCookie(req.headers.cookie))
+          } catch {
+            return false
+          }
+        }
+
+        if (url.pathname === APP_API_ROUTES.authStatus) {
           const authenticated = await auth.verifySessionToken(auth.getAuthTokenFromCookie(req.headers.cookie))
           sendJson(200, { enabled: auth.isAuthEnabled(), authenticated })
           return
         }
 
-        if (url.pathname === '/api/config') {
+        if (url.pathname === APP_API_ROUTES.config) {
           const runtime = await import('./src/server/runtimeConfig.ts')
           sendJson(200, runtime.getRuntimeConfig())
           return
         }
 
-        if (url.pathname === '/api/auth/logout') {
+        if (url.pathname.startsWith('/api/account/')) {
+          if (url.pathname === APP_API_ROUTES.accountStatus) {
+            await runApiRoute(() => import('./api/account/status.ts'))
+            return
+          }
+          if (url.pathname === APP_API_ROUTES.accountLogin) {
+            await runApiRoute(() => import('./api/account/login.ts'))
+            return
+          }
+          if (url.pathname === APP_API_ROUTES.accountRegister) {
+            await runApiRoute(() => import('./api/account/register.ts'))
+            return
+          }
+          if (url.pathname === APP_API_ROUTES.accountLogout) {
+            await runApiRoute(() => import('./api/account/logout.ts'))
+            return
+          }
+          if (url.pathname === APP_API_ROUTES.accountConfig) {
+            await runApiRoute(() => import('./api/account/config.ts'))
+            return
+          }
+
+          sendJson(404, { error: 'Not found' })
+          return
+        }
+
+        if (url.pathname === APP_API_ROUTES.authLogout) {
           sendJson(200, { ok: true }, { 'Set-Cookie': auth.buildExpiredSessionCookie(false) })
           return
         }
 
-        if (url.pathname === '/api/auth/login') {
+        if (url.pathname === APP_API_ROUTES.authLogin) {
           if (req.method !== 'POST') {
             sendJson(405, { error: 'Method not allowed' })
             return
@@ -239,32 +291,22 @@ function authDevPlugin(): Plugin {
           return
         }
 
-        if (!auth.isAuthEnabled()) {
-          next()
-          return
-        }
-
         const pathname = url.pathname
-        const isPublic =
-          pathname === '/login' ||
-          pathname.startsWith('/api/auth/') ||
-          pathname.startsWith('/assets/') ||
-          pathname.endsWith('.svg') ||
-          pathname.endsWith('.png') ||
-          pathname.endsWith('.ico')
+        const isPublic = pathname.startsWith('/api/auth/') || isViteDevPublicPath(pathname)
 
-        if (isPublic || await auth.verifySessionToken(auth.getAuthTokenFromCookie(req.headers.cookie))) {
-          if (url.pathname === '/api/ai/models') {
+        if (isPublic || await isRequestAuthorized()) {
+          if (url.pathname === APP_API_ROUTES.aiModels) {
             try {
               const ai = await import('./src/server/aiService.ts')
               sendJson(200, { data: await ai.listServerModels() })
             } catch (e) {
-              sendJson(502, { error: (e as Error).message })
+              const error = e as Error & { statusCode?: number }
+              sendJson(error.statusCode || 502, { error: error.message })
             }
             return
           }
 
-          if (url.pathname === '/api/ai/chat' || url.pathname === '/api/ai/chat-stream') {
+          if (url.pathname === APP_API_ROUTES.aiChat || url.pathname === APP_API_ROUTES.aiChatStream) {
             if (req.method !== 'POST') {
               sendJson(405, { error: 'Method not allowed' })
               return
@@ -282,7 +324,7 @@ function authDevPlugin(): Plugin {
               }
               try {
                 const ai = await import('./src/server/aiService.ts')
-                if (url.pathname === '/api/ai/chat') {
+                if (url.pathname === APP_API_ROUTES.aiChat) {
                   const data = await ai.chatServer(body.messages, body)
                   sendJson(200, data)
                   return
@@ -306,7 +348,8 @@ function authDevPlugin(): Plugin {
                 }
                 res.end()
               } catch (e) {
-                sendJson(502, { error: (e as Error).message })
+                const error = e as Error & { statusCode?: number }
+                sendJson(error.statusCode || 502, { error: error.message })
               }
             })
             return
@@ -326,6 +369,29 @@ function authDevPlugin(): Plugin {
       })
     },
   }
+}
+
+function isViteDevPublicPath(pathname: string): boolean {
+  return (
+    pathname === '/login' ||
+    pathname === '/favicon.svg' ||
+    pathname === '/icon-source.svg' ||
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/@vite/client' ||
+    pathname.startsWith('/@id/') ||
+    pathname.startsWith('/@fs/') ||
+    pathname.startsWith('/src/') ||
+    pathname.startsWith('/node_modules/') ||
+    pathname.startsWith('/node_modules/.vite/') ||
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith('/pwa-') ||
+    pathname.endsWith('.css') ||
+    pathname.endsWith('.js') ||
+    pathname.endsWith('.map') ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.ico')
+  )
 }
 
 export default defineConfig(({ mode }) => {
@@ -354,13 +420,13 @@ export default defineConfig(({ mode }) => {
       open: false,
       proxy: {
         // 新浪财经代理（需要 Referer 头，浏览器直连会被拦）
-        '/api/sina': {
-          target: 'https://hq.sinajs.cn',
+        [APP_API_ROUTES.sinaDevProxy]: {
+          target: EXTERNAL_ENDPOINTS.sina.quoteBaseUrl,
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/sina/, ''),
+          rewrite: (path) => path.replace(new RegExp(`^${APP_API_ROUTES.sinaDevProxy}`), ''),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
-              proxyReq.setHeader('Referer', 'https://finance.sina.com.cn')
+              proxyReq.setHeader('Referer', EXTERNAL_ENDPOINTS.sina.financeReferer)
             })
           },
         },

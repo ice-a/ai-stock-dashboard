@@ -1,30 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useRefreshStore } from '../stores/refresh'
 import { useQuotesStore } from '../stores/quotes'
 import { useWatchlistStore } from '../stores/watchlist'
-import { useTopicStore } from '../stores/topic'
+import { usePortfolioStore } from '../stores/portfolio'
+import { useSectorStore } from '../stores/sector'
 import { useAIStore } from '../stores/ai'
 import { useRuntimeConfigStore } from '../stores/runtimeConfig'
-import { sourceManager } from '../api/sourceManager'
+import { useAccountStore } from '../stores/account'
 import { listModels, type ModelInfo } from '../api/ai'
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 import { setLocale, type Locale } from '../i18n'
+import { loadPersonalConfigFromCloud, savePersonalConfigToCloud } from '../utils/personalConfig'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
 const refresh = useRefreshStore()
 const quotes = useQuotesStore()
 const watchlist = useWatchlistStore()
-const topicStore = useTopicStore()
+const portfolio = usePortfolioStore()
+const sectorStore = useSectorStore()
 const aiStore = useAIStore()
 const runtimeConfig = useRuntimeConfigStore()
+const accountStore = useAccountStore()
 
 // ============ AI 模型配置 ============
 const modelList = ref<ModelInfo[]>([])
 const modelLoading = ref(false)
 const modelTestResult = ref<string | null>(null)
+const cloudSyncing = ref(false)
+const cloudSyncResult = ref<string | null>(null)
 
 // 合并当前拉取的模型和已保存的模型列表
 const allModels = computed(() => {
@@ -34,25 +41,68 @@ const allModels = computed(() => {
   return [...map.values()]
 })
 
+const accountName = computed(() => {
+  if (accountStore.authenticated && accountStore.user) return accountStore.user
+  if (accountStore.guest) return '游客'
+  return accountStore.enabled ? '未登录' : '本地'
+})
+
+const accountStorage = computed(() => accountStore.authenticated ? 'MongoDB' : '本机浏览器')
+
 onMounted(() => {
   // 初始模型列表：有凭证就尝试拉取
   if (aiStore.hasCredentials) {
     refreshModels()
   }
-})
-
-// 填写 API Key 后自动拉取模型列表
-let modelFetchTimer: ReturnType<typeof setTimeout> | null = null
-watch(() => [aiStore.baseUrl, aiStore.apiKey], () => {
-  if (modelFetchTimer) clearTimeout(modelFetchTimer)
-  if (aiStore.hasCredentials) {
-    modelFetchTimer = setTimeout(() => refreshModels(), 800)
-  }
+  accountStore.refresh({ timeoutMs: 2000 })
 })
 
 function saveAI() {
   aiStore.save()
   modelTestResult.value = '✓ 已保存'
+}
+
+async function saveCloudConfig() {
+  if (!accountStore.authenticated) {
+    cloudSyncResult.value = '✗ 请先登录账户'
+    return
+  }
+  cloudSyncing.value = true
+  cloudSyncResult.value = '正在保存个人配置…'
+  try {
+    const updatedAt = await savePersonalConfigToCloud()
+    cloudSyncResult.value = `✓ 已保存到 MongoDB${updatedAt ? ` · ${new Date(updatedAt).toLocaleString()}` : ''}`
+  } catch (e) {
+    cloudSyncResult.value = `✗ ${(e as Error).message}`
+  } finally {
+    cloudSyncing.value = false
+  }
+}
+
+async function loadCloudConfig() {
+  if (!accountStore.authenticated) {
+    cloudSyncResult.value = '✗ 请先登录账户'
+    return
+  }
+  cloudSyncing.value = true
+  cloudSyncResult.value = '正在载入个人配置…'
+  try {
+    const result = await loadPersonalConfigFromCloud()
+    if (!result.loaded) {
+      cloudSyncResult.value = '未找到云端配置，当前本地配置保持不变。'
+      return
+    }
+    cloudSyncResult.value = `✓ 已载入：${result.applied.join('、') || '配置'}${result.updatedAt ? ` · ${new Date(result.updatedAt).toLocaleString()}` : ''}`
+  } catch (e) {
+    cloudSyncResult.value = `✗ ${(e as Error).message}`
+  } finally {
+    cloudSyncing.value = false
+  }
+}
+
+async function logoutAccount() {
+  await accountStore.logout()
+  window.location.href = '/login'
 }
 
 async function refreshModels() {
@@ -77,34 +127,6 @@ async function refreshModels() {
     modelLoading.value = false
   }
 }
-
-// ============ 数据源健康度 ============
-const healthTick = ref(0)
-const sources = computed(() => {
-  void healthTick.value
-  return sourceManager.list()
-})
-
-const testingSources = ref<Record<string, string>>({})
-
-async function testSource(id: 'longport' | 'eastmoney' | 'sina' | 'yahoo') {
-  testingSources.value[id] = '...'
-  const t0 = performance.now()
-  try {
-    const r = await sourceManager.fetchQuote('00700.HK', { preferred: [id] })
-    const ms = Math.round(performance.now() - t0)
-    testingSources.value[id] = r.source === id && r.price != null
-      ? `✓ OK · ${ms}ms`
-      : `✗ ${r.source}`
-  } catch (e) {
-    testingSources.value[id] = `✗ ${(e as Error).message}`
-  }
-  healthTick.value++
-}
-
-onMounted(() => {
-  testSource('sina')
-})
 
 // ============ 主题 / 语言 / 刷新 ============
 function onThemeChange(m: 'light' | 'dark' | 'system') {
@@ -133,11 +155,11 @@ function clearCache() {
 
 function exportAll() {
   const data = {
-    version: 2,
+    version: 3,
     settings: settings.exportJson() ? JSON.parse(settings.exportJson()).settings : null,
-    topics: topicStore.topics,
-    activeTopic: topicStore.activeId,
+    sectors: JSON.parse(sectorStore.exportJson()),
     favorites: watchlist.items,
+    portfolio: portfolio.holdings,
     quotes: Object.fromEntries(quotes.quotes),
     ai: { baseUrl: aiStore.baseUrl, model: aiStore.model },
     exportedAt: new Date().toISOString(),
@@ -162,8 +184,12 @@ function exportFavorites() {
 }
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const allFileInput = ref<HTMLInputElement | null>(null)
 function importFavorites() {
   fileInput.value?.click()
+}
+function importAll() {
+  allFileInput.value?.click()
 }
 function onFileSelected(e: Event) {
   const file = (e.target as HTMLInputElement)?.files?.[0]
@@ -175,16 +201,49 @@ function onFileSelected(e: Event) {
   }
   reader.readAsText(file)
 }
+function onAllFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result || '{}'))
+      let messages: string[] = []
+      if (parsed.settings) {
+        settings.importJson(JSON.stringify({ settings: parsed.settings }))
+        messages.push('设置')
+      }
+      if (parsed.sectors) {
+        const result = sectorStore.importJson(JSON.stringify(parsed.sectors))
+        messages.push(`板块新增 ${result.added} / 合并 ${result.merged}`)
+      }
+      if (Array.isArray(parsed.favorites)) {
+        const result = watchlist.importJson(JSON.stringify({ items: parsed.favorites }))
+        messages.push(`自选新增 ${result.added} / 跳过 ${result.merged}`)
+      }
+      if (Array.isArray(parsed.portfolio)) {
+        const result = portfolio.importJson(JSON.stringify({ holdings: parsed.portfolio }))
+        messages.push(`持仓新增 ${result.added} / 跳过 ${result.merged}`)
+      }
+      if (parsed.quotes && typeof parsed.quotes === 'object') {
+        quotes.setMany(Object.values(parsed.quotes) as any)
+        messages.push('报价缓存')
+      }
+      modelTestResult.value = messages.length ? `✓ 导入完成：${messages.join('，')}` : '✗ 未识别的备份文件'
+    } catch (err) {
+      modelTestResult.value = `✗ ${(err as Error).message}`
+    } finally {
+      input.value = ''
+    }
+  }
+  reader.readAsText(file)
+}
 </script>
 
 <template>
   <div class="page">
     <h1>{{ t('settings.title') }}</h1>
-
-    <section class="card section">
-      <h2>站点访问控制</h2>
-      <p class="small muted">部署环境设置 <code>SITE_PASSWORD</code> 后，访问网站需要先输入密码。可选设置 <code>SITE_AUTH_SECRET</code> 用于签名 Cookie，<code>SITE_AUTH_MAX_AGE_SECONDS</code> 控制登录有效期。</p>
-    </section>
 
     <section class="card section">
       <h2>{{ t('settings.theme') }}</h2>
@@ -261,7 +320,7 @@ function onFileSelected(e: Event) {
       </div>
       <div class="form-row">
         <label class="lbl small muted">Base URL</label>
-        <input v-model="aiStore.baseUrl" type="text" placeholder="https://api.openai.com/v1" class="grow" />
+        <input v-model="aiStore.baseUrl" type="text" :placeholder="EXTERNAL_ENDPOINTS.openai.baseUrl" class="grow" />
       </div>
       <div class="form-row">
         <label class="lbl small muted">API Key</label>
@@ -291,55 +350,21 @@ function onFileSelected(e: Event) {
     </section>
 
     <section class="card section">
-      <h2>数据源健康度</h2>
-      <p class="small muted">系统按 长桥 → 新浪 → 东方财富 → Yahoo → 静态快照 顺序回退。第三方行情统一走 Vercel API 代理，避免浏览器 CORS 和公共代理限制。</p>
-      <div class="source-list">
-        <div v-for="s in sources" :key="s.id" class="source-row">
-          <div class="src-name">
-            <span class="dot" :class="s.lastSuccess ? 'up' : (s.attempts > 0 ? 'down' : 'idle')"></span>
-            <strong>{{ s.name }}</strong>
-            <code class="small muted">{{ s.id }}</code>
-          </div>
-          <div class="src-stats small muted">
-            <span>尝试 {{ s.attempts }}</span>
-            <span>失败 {{ s.failures }}</span>
-            <span v-if="s.lastSuccess">
-              上次成功 {{ new Date(s.lastSuccess).toLocaleTimeString() }}
-              · {{ Math.round(s.lastDuration) }}ms
-            </span>
-            <span v-else class="neg">未使用</span>
-            <span v-if="s.lastError" class="neg">· {{ s.lastError }}</span>
-          </div>
-          <button v-if="s.id === 'longport' || s.id === 'eastmoney' || s.id === 'sina' || s.id === 'yahoo'"
-                  class="btn small"
-                  :disabled="testingSources[s.id] === '...'"
-                  @click="testSource(s.id as any)">
-            <span v-if="testingSources[s.id] === '...'" class="spinner"></span>
-            {{ testingSources[s.id] || '测试' }}
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>主题库</h2>
-      <p class="small muted">当前激活：<strong>{{ topicStore.current.name }}</strong> · 共 {{ topicStore.topics.length }} 个主题</p>
-      <router-link to="/topics" class="btn">管理主题库 →</router-link>
-    </section>
-
-    <section class="card section">
       <h2>数据管理</h2>
       <div class="actions">
         <button class="btn" @click="exportFavorites">导出自选股</button>
         <button class="btn" @click="exportAll">导出全部数据</button>
+        <button class="btn" @click="importAll">导入全部数据</button>
         <button class="btn" @click="importFavorites">导入自选股</button>
         <button class="btn" @click="clearCache">{{ t('settings.clearCache') }}</button>
         <input ref="fileInput" type="file" accept="application/json" style="display:none" @change="onFileSelected" />
+        <input ref="allFileInput" type="file" accept="application/json" style="display:none" @change="onAllFileSelected" />
       </div>
       <div class="stats-row small muted">
         <span>报价缓存：{{ quotes.quotes.size }} 个</span>
         <span>自选股：{{ watchlist.items.length }} 只</span>
-        <span>主题：{{ topicStore.topics.length }} 个</span>
+        <span>持仓：{{ portfolio.holdings.length }} 条</span>
+        <span>自定义板块：{{ sectorStore.customSectors.length }} 个</span>
       </div>
     </section>
 
@@ -379,21 +404,20 @@ function onFileSelected(e: Event) {
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }
 .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.account-panel { display: flex; flex-direction: column; gap: var(--space-3); }
+.account-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: var(--space-2); }
+.account-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-soft);
+}
+.account-meta strong { overflow-wrap: anywhere; }
 .stats-row { display: flex; gap: var(--space-4); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
 details summary { cursor: pointer; padding: 4px 0; }
-.source-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.source-row {
-  display: grid; grid-template-columns: 200px 1fr auto;
-  align-items: center; gap: var(--space-3);
-  padding: var(--space-2); background: var(--color-bg-soft);
-  border-radius: var(--radius-md);
-}
-.src-name { display: flex; align-items: center; gap: 8px; }
-.src-stats { display: flex; gap: 12px; flex-wrap: wrap; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-muted); }
-.dot.up { background: var(--color-up); box-shadow: 0 0 6px var(--color-up); }
-.dot.down { background: var(--color-down); }
-.dot.idle { background: var(--color-muted); }
 .spinner {
   display: inline-block; width: 10px; height: 10px;
   border: 2px solid currentColor; border-right-color: transparent;
@@ -402,6 +426,6 @@ details summary { cursor: pointer; padding: 4px 0; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 640px) {
-  .source-row { grid-template-columns: 1fr; }
+  .account-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>

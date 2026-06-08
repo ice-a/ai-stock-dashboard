@@ -1,3 +1,5 @@
+import { readPositiveIntegerEnv } from './env'
+
 interface AttemptState {
   count: number
   resetAt: number
@@ -8,7 +10,7 @@ const attempts = new Map<string, AttemptState>()
 export function checkLoginAttempt(key: string): { ok: boolean; retryAfter: number } {
   const now = Date.now()
   const windowMs = 5 * 60 * 1000
-  const maxAttempts = Number(process.env.SITE_AUTH_MAX_ATTEMPTS || 10)
+  const maxAttempts = readPositiveIntegerEnv('SITE_AUTH_MAX_ATTEMPTS', 10)
   const current = attempts.get(key)
 
   if (!current || current.resetAt <= now) {

@@ -1,12 +1,13 @@
 // 代理 URL 工具
 // 开发环境使用 Vite 代理绕过 CORS，生产环境使用 CORS 代理或直连
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 
 const IS_DEV = import.meta.env.DEV
 
 // CORS 代理列表（生产环境使用，按优先级排序）
 const CORS_PROXIES = [
-  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url: string) => `${EXTERNAL_ENDPOINTS.corsProxy.allOriginsRawUrl}?url=${encodeURIComponent(url)}`,
+  (url: string) => `${EXTERNAL_ENDPOINTS.corsProxy.corsProxyIoUrl}?${encodeURIComponent(url)}`,
 ]
 
 /**

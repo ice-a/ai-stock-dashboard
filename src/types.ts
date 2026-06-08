@@ -66,7 +66,7 @@ export interface Quote {
   longName?: string
   regularMarketTime?: number | null
   updatedAt: number
-  source: 'longport' | 'eastmoney' | 'sina' | 'yahoo' | 'fallback' | 'cache'
+  source: 'longport' | 'eastmoney' | 'sina' | 'fallback' | 'cache'
 }
 
 export interface KLinePoint {

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { i18n } from '../i18n'
+import { useAccountStore } from '../stores/account'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -45,6 +46,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人持仓' }
   },
   {
+    path: '/user',
+    name: 'user-info',
+    component: () => import('../views/UserInfoView.vue'),
+    meta: { title: '用户信息' }
+  },
+  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('../views/MyFavoritesView.vue'),
@@ -55,6 +62,12 @@ const routes: RouteRecordRaw[] = [
     name: 'ask',
     component: () => import('../views/AskView.vue'),
     meta: { title: 'AI 问答' }
+  },
+  {
+    path: '/mystic',
+    name: 'mystic-pick',
+    component: () => import('../views/MysticPickView.vue'),
+    meta: { title: '玄学选股' }
   },
   {
     path: '/settings',
@@ -84,4 +97,17 @@ router.afterEach((to) => {
   const baseTitle = i18n.global.t('app.title')
   const pageTitle = (to.meta?.title as string) || baseTitle
   document.title = `${pageTitle} · ${baseTitle}`
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta?.public === true) return true
+
+  const account = useAccountStore()
+  if (!account.checked && !account.loading) {
+    account.refresh({ timeoutMs: 2000 }).catch(() => undefined)
+  }
+  if (account.enabled && !account.authenticated && !account.guest) {
+    return { path: '/login', query: { next: to.fullPath } }
+  }
+  return true
 })

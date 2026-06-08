@@ -1,3 +1,6 @@
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
+import { hasServerAiConfig, readAiConfig, readOptionalNumberEnv, readSitePassword } from './env'
+
 export interface RuntimeConfig {
   auth: {
     enabled: boolean
@@ -15,36 +18,22 @@ export interface RuntimeConfig {
   }
 }
 
-function readEnv(name: string): string {
-  return process.env[name]?.trim() || ''
-}
-
-function readNumber(name: string, fallback: number): number {
-  const value = Number(readEnv(name))
-  return Number.isFinite(value) ? value : fallback
-}
-
-function readOptionalNumber(name: string): number | null {
-  const value = Number(readEnv(name))
-  return Number.isFinite(value) ? value : null
-}
-
 export function getRuntimeConfig(): RuntimeConfig {
-  const aiApiKey = readEnv('AI_API_KEY') || readEnv('OPENAI_API_KEY')
+  const ai = readAiConfig()
   return {
     auth: {
-      enabled: Boolean(readEnv('SITE_PASSWORD') || readEnv('APP_PASSWORD')),
+      enabled: Boolean(readSitePassword()),
     },
     ai: {
-      serverManaged: Boolean(aiApiKey),
-      baseUrl: readEnv('AI_BASE_URL') || readEnv('OPENAI_BASE_URL') || 'https://api.openai.com/v1',
-      model: readEnv('AI_MODEL') || readEnv('OPENAI_MODEL') || '',
-      temperature: readNumber('AI_TEMPERATURE', 0.7),
-      maxTokens: readNumber('AI_MAX_TOKENS', 2000),
+      serverManaged: hasServerAiConfig(),
+      baseUrl: ai.baseUrl || EXTERNAL_ENDPOINTS.openai.baseUrl,
+      model: ai.model,
+      temperature: ai.temperature,
+      maxTokens: ai.maxTokens,
     },
     refresh: {
-      listInterval: readOptionalNumber('APP_LIST_REFRESH_SECONDS'),
-      detailInterval: readOptionalNumber('APP_DETAIL_REFRESH_SECONDS'),
+      listInterval: readOptionalNumberEnv('APP_LIST_REFRESH_SECONDS'),
+      detailInterval: readOptionalNumberEnv('APP_DETAIL_REFRESH_SECONDS'),
     },
   }
 }

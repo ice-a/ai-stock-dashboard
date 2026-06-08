@@ -1,5 +1,6 @@
 // 一言 API
 // https://developer.hitokoto.cn/sentence/
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 
 export interface HitokotoResponse {
   id: number
@@ -29,8 +30,8 @@ const TYPE_MAP: Record<string, string> = {
 
 export async function fetchHitokoto(type?: string): Promise<HitokotoResponse> {
   const url = type
-    ? `https://v1.hitokoto.cn/?c=${type}&encode=json`
-    : 'https://v1.hitokoto.cn/?encode=json'
+    ? `${EXTERNAL_ENDPOINTS.hitokoto.sentenceUrl}?c=${type}&encode=json`
+    : `${EXTERNAL_ENDPOINTS.hitokoto.sentenceUrl}?encode=json`
   const r = await fetch(url)
   if (!r.ok) throw new Error(`Hitokoto ${r.status}`)
   return r.json()

@@ -6,6 +6,7 @@
 import type { Quote } from '../../types'
 import { parseLongportSymbol } from '../symbolMap'
 import { getFallbackQuote } from '../../data/fallbackQuotes'
+import { APP_API_ROUTES } from '../../config/endpoints'
 import type { QuoteProvider, ProviderMeta, ProviderResult } from './types'
 
 const SINA_META: ProviderMeta = {
@@ -65,6 +66,24 @@ function parseSinaLine(text: string): { sinaCode: string; raw: SinaRaw } | null 
   const sinaCode = match[1]
   const fields = match[2].split(',')
   if (fields.length < 8) return null
+  if (sinaCode.startsWith('gb_')) {
+    const price = parseFloat(fields[1]) || 0
+    const changeAbs = parseFloat(fields[4]) || 0
+    const prevClose = parseFloat(fields[26]) || (price && changeAbs ? price - changeAbs : 0)
+    return {
+      sinaCode,
+      raw: {
+        name: fields[0] || '',
+        open: parseFloat(fields[5]) || 0,
+        prevClose,
+        price,
+        high: parseFloat(fields[6]) || 0,
+        low: parseFloat(fields[7]) || 0,
+        volume: parseFloat(fields[10]) || 0,
+        turnover: parseFloat(fields[31]) || 0,
+      },
+    }
+  }
   return {
     sinaCode,
     raw: {
@@ -135,7 +154,7 @@ function sinaToQuote(symbol: string, raw: SinaRaw | null): Quote {
 }
 
 async function sinaFetchBatch(sinaCodes: string[], signal?: AbortSignal): Promise<string> {
-  const url = `/api/market?source=sina&symbols=${encodeURIComponent(sinaCodes.join(','))}`
+  const url = `${APP_API_ROUTES.market}?source=sina&symbols=${encodeURIComponent(sinaCodes.join(','))}`
   const r = await fetch(url, { signal })
   if (!r.ok) throw new Error(`Sina ${r.status}`)
   const json = await r.json() as { text?: string; error?: string }

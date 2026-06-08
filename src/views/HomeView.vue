@@ -92,7 +92,7 @@ function saveSummaryToCache(sectorId: string, data: SectorSummary) {
 }
 
 async function loadSectorSummary(force = false) {
-  if (!aiStore.hasCredentials) return
+  if (!aiStore.isConfigured) return
   const sector = activeSector.value
   if (!sector) return
 
@@ -198,7 +198,7 @@ async function loadIndices() {
 }
 
 async function loadCalendar() {
-  if (!aiStore.hasCredentials) return
+  if (!aiStore.isConfigured) return
   calendarLoading.value = true
   try {
     const resp = await chat(
@@ -221,15 +221,15 @@ async function loadCalendar() {
 
 onMounted(() => {
   loadIndices()
-  loadCalendar()
-  loadSectorSummary()
+  const sector = activeSector.value
+  if (sector) sectorSummary.value = loadSummaryFromCache(sector.id)
   refreshNow()
 })
 
-// 切换板块时从缓存加载或重新生成
+// 切换板块时只读取缓存，避免自动消耗 AI 配额
 watch(() => sectorStore.activeId, () => {
-  sectorSummary.value = null
-  loadSectorSummary()
+  const sector = activeSector.value
+  sectorSummary.value = sector ? loadSummaryFromCache(sector.id) : null
 })
 
 function goToStock(symbol: string) {
@@ -244,7 +244,9 @@ function goToStock(symbol: string) {
       <div class="date-area">
         <div class="date-main">{{ dateStr }}</div>
         <div v-if="calendarInfo" class="date-lunar small muted">{{ calendarInfo }}</div>
-        <div v-else-if="calendarLoading" class="date-lunar small muted">万年历加载中…</div>
+        <button v-else-if="aiStore.isConfigured" class="date-action small muted" :disabled="calendarLoading" @click="loadCalendar">
+          {{ calendarLoading ? '万年历加载中…' : '生成万年历' }}
+        </button>
       </div>
     </section>
 
@@ -289,10 +291,12 @@ function goToStock(symbol: string) {
     </section>
 
     <!-- AI 板块摘要 -->
-    <section v-if="aiStore.hasCredentials" class="sector-summary card">
+    <section v-if="aiStore.isConfigured" class="sector-summary card">
       <div class="summary-header">
         <span class="summary-header-title">AI 板块分析</span>
-        <button v-if="sectorSummary && !sectorSummaryLoading" class="btn ghost small" @click="loadSectorSummary(true)">重新生成</button>
+        <button class="btn ghost small" :disabled="sectorSummaryLoading" @click="loadSectorSummary(true)">
+          {{ sectorSummary ? '重新生成' : '生成分析' }}
+        </button>
       </div>
       <div v-if="sectorSummaryLoading" class="summary-loading">
         <span class="spinner"></span> AI 板块分析中…
@@ -320,6 +324,7 @@ function goToStock(symbol: string) {
           </div>
         </div>
       </div>
+      <div v-else class="small muted">点击生成后，AI 会基于当前板块成分股生成摘要。</div>
     </section>
 
     <!-- 涨跌幅排行 -->
@@ -407,6 +412,14 @@ function goToStock(symbol: string) {
 }
 .date-main { font-size: var(--fs-lg); font-weight: 600; }
 .date-lunar { margin-top: 2px; }
+.date-action {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.date-action:hover { color: var(--color-link); }
 
 /* 全球指数 */
 .indices-section {

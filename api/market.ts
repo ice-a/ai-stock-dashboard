@@ -1,3 +1,5 @@
+import { EXTERNAL_ENDPOINTS } from '../src/config/endpoints'
+
 interface ApiRequest {
   method?: string
   query?: Record<string, string | string[] | undefined>
@@ -6,19 +8,6 @@ interface ApiRequest {
 interface ApiResponse {
   status(code: number): { json(payload: unknown): void }
 }
-
-const EM_QUOTE_BASES = [
-  'https://push2delay.eastmoney.com/api/qt/stock/get',
-  'https://push2.eastmoney.com/api/qt/stock/get',
-]
-
-const EM_KLINE_BASES = [
-  'https://push2his.eastmoney.com/api/qt/stock/kline/get',
-]
-
-const EM_SEARCH_URL = 'https://searchapi.eastmoney.com/api/suggest/get'
-const EM_NOTICE_URL = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
-const EM_NEWS_URL = 'https://search-api-web.eastmoney.com/search/jsonp'
 
 function readQueryString(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || ''
@@ -35,7 +24,7 @@ async function fetchFirstJson(urls: string[]): Promise<unknown> {
   for (const url of urls) {
     try {
       const text = await fetchText(url, {
-        Referer: 'https://quote.eastmoney.com/',
+        Referer: EXTERNAL_ENDPOINTS.eastmoney.quoteReferer,
         'User-Agent': 'Mozilla/5.0',
         Accept: 'application/json,text/plain,*/*',
       })
@@ -58,7 +47,7 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       return
     }
     const query = `secid=${encodeURIComponent(secid)}&fields=${encodeURIComponent(fields)}`
-    const data = await fetchFirstJson(EM_QUOTE_BASES.map(base => `${base}?${query}`))
+    const data = await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.quoteBases.map(base => `${base}?${query}`))
     res.status(200).json(data)
     return
   }
@@ -79,7 +68,7 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       end: readQueryString(req.query?.end) || '20500101',
       lmt: readQueryString(req.query?.lmt) || '200',
     })
-    const data = await fetchFirstJson(EM_KLINE_BASES.map(base => `${base}?${params.toString()}`))
+    const data = await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.klineBases.map(base => `${base}?${params.toString()}`))
     res.status(200).json(data)
     return
   }
@@ -96,8 +85,8 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       token: readQueryString(req.query?.token) || 'D43BF722C8E33BDC906FB84D85E326E8',
       count: readQueryString(req.query?.count) || '10',
     })
-    const text = await fetchText(`${EM_SEARCH_URL}?${params.toString()}`, {
-      Referer: 'https://quote.eastmoney.com/',
+    const text = await fetchText(`${EXTERNAL_ENDPOINTS.eastmoney.searchUrl}?${params.toString()}`, {
+      Referer: EXTERNAL_ENDPOINTS.eastmoney.quoteReferer,
       'User-Agent': 'Mozilla/5.0',
       Accept: 'application/json,text/plain,*/*',
     })
@@ -117,8 +106,8 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       ann_type: readQueryString(req.query?.ann_type) || 'SHA,SZA',
       stock_list: stockList,
     })
-    const text = await fetchText(`${EM_NOTICE_URL}?${params.toString()}`, {
-      Referer: 'https://data.eastmoney.com/',
+    const text = await fetchText(`${EXTERNAL_ENDPOINTS.eastmoney.noticeUrl}?${params.toString()}`, {
+      Referer: EXTERNAL_ENDPOINTS.eastmoney.dataReferer,
       'User-Agent': 'Mozilla/5.0',
       Accept: 'application/json,text/plain,*/*',
     })
@@ -134,8 +123,8 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
     }
     const cb = readQueryString(req.query?.cb) || `cb_${Date.now()}`
     const params = new URLSearchParams({ cb, param })
-    const text = await fetchText(`${EM_NEWS_URL}?${params.toString()}`, {
-      Referer: 'https://so.eastmoney.com/',
+    const text = await fetchText(`${EXTERNAL_ENDPOINTS.eastmoney.newsUrl}?${params.toString()}`, {
+      Referer: EXTERNAL_ENDPOINTS.eastmoney.searchReferer,
       'User-Agent': 'Mozilla/5.0',
       Accept: 'application/javascript,text/plain,*/*',
     })
@@ -160,10 +149,10 @@ async function handleSina(req: ApiRequest, res: ApiResponse): Promise<void> {
     return
   }
 
-  const url = `https://hq.sinajs.cn/list=${symbols.map(encodeURIComponent).join(',')}`
+  const url = `${EXTERNAL_ENDPOINTS.sina.quoteBaseUrl}/list=${symbols.map(encodeURIComponent).join(',')}`
   const r = await fetch(url, {
     headers: {
-      Referer: 'https://finance.sina.com.cn',
+      Referer: EXTERNAL_ENDPOINTS.sina.financeReferer,
       'User-Agent': 'Mozilla/5.0',
       Accept: '*/*',
     },
@@ -171,33 +160,8 @@ async function handleSina(req: ApiRequest, res: ApiResponse): Promise<void> {
   if (!r.ok) throw new Error(`Sina ${r.status}`)
 
   const bytes = Buffer.from(await r.arrayBuffer())
-  res.status(200).json({ text: bytes.toString('binary') })
-}
-
-async function handleYahoo(req: ApiRequest, res: ApiResponse): Promise<void> {
-  const symbol = readQueryString(req.query?.symbol).trim()
-  if (!symbol) {
-    res.status(400).json({ error: 'Missing symbol' })
-    return
-  }
-
-  const interval = readQueryString(req.query?.interval) || '1d'
-  const range = readQueryString(req.query?.range) || '1d'
-  const params = new URLSearchParams({ interval, range })
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params.toString()}`
-  const r = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-      Accept: 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-  })
-  const contentType = r.headers.get('content-type') || ''
-  const text = await r.text()
-  if (!r.ok || !contentType.includes('json')) {
-    throw new Error(`Yahoo ${r.status}: ${text.substring(0, 120)}`)
-  }
-  res.status(200).json(JSON.parse(text))
+  const decoder = new TextDecoder('gb18030')
+  res.status(200).json({ text: decoder.decode(bytes) })
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -215,10 +179,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
     if (source === 'sina') {
       await handleSina(req, res)
-      return
-    }
-    if (source === 'yahoo') {
-      await handleYahoo(req, res)
       return
     }
     res.status(404).json({ error: 'Unknown market source' })

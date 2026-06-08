@@ -1,7 +1,6 @@
 // 简易市场交易时段判断（基于本机时区，简单启发式）
 // 返回当前是否在交易时段
 import { ref, onMounted, onUnmounted } from 'vue'
-import { toYahooSymbol } from '../api/symbolMap'
 
 type Market = 'us' | 'cn' | 'hk' | 'jp' | 'kr' | 'tw' | 'eu' | 'in' | 'au' | 'my' | 'unknown'
 

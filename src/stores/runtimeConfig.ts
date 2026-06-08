@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { APP_API_ROUTES, EXTERNAL_ENDPOINTS } from '../config/endpoints'
 
 export interface ClientRuntimeConfig {
   auth: {
@@ -21,7 +22,7 @@ const DEFAULT_CONFIG: ClientRuntimeConfig = {
   auth: { enabled: false },
   ai: {
     serverManaged: false,
-    baseUrl: 'https://api.openai.com/v1',
+    baseUrl: EXTERNAL_ENDPOINTS.openai.baseUrl,
     model: '',
     temperature: 0.7,
     maxTokens: 2000,
@@ -41,7 +42,7 @@ export const useRuntimeConfigStore = defineStore('runtimeConfig', {
   actions: {
     async load() {
       try {
-        const r = await fetch('/api/config')
+        const r = await fetch(APP_API_ROUTES.config)
         if (r.ok) {
           this.config = { ...DEFAULT_CONFIG, ...(await r.json()) }
         }

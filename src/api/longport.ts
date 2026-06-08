@@ -1,3 +1,4 @@
+import { APP_API_ROUTES } from '../config/endpoints'
 import { toLongportSymbol } from './symbolMap'
 
 export interface LongPortCreds {
@@ -36,7 +37,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export async function lpGetQuote(symbols: string[], _creds?: LongPortCreds | null, signal?: AbortSignal): Promise<LPQuote[]> {
   const symbolList = symbols.map(toLongportSymbol).join(',')
-  const response = await fetch(`/api/longbridge/quotes?symbols=${encodeURIComponent(symbolList)}`, withSignal(signal))
+  const response = await fetch(`${APP_API_ROUTES.longbridgeQuotes}?symbols=${encodeURIComponent(symbolList)}`, withSignal(signal))
   const json = await readJson<{ data: LPQuote[] }>(response)
   return json.data || []
 }
@@ -51,14 +52,26 @@ export async function lpGetCandlesticks(
     period: options.period || 'day',
     count: String(options.count || 200),
   })
-  const response = await fetch(`/api/longbridge/candlesticks?${params.toString()}`, withSignal(options.signal))
+  const response = await fetch(`${APP_API_ROUTES.longbridgeCandlesticks}?${params.toString()}`, withSignal(options.signal))
   const json = await readJson<{ data: any[] }>(response)
   return json.data || []
 }
 
-export async function fetchLongbridgeStatus(signal?: AbortSignal): Promise<{ configured: boolean; host: string }> {
-  const response = await fetch('/api/longbridge/status', withSignal(signal))
-  return readJson<{ configured: boolean; host: string }>(response)
+export async function fetchLongbridgeStatus(signal?: AbortSignal): Promise<{
+  configured: boolean
+  host: string
+  quoteHost?: string
+  region?: string
+  disabledReason?: string
+}> {
+  const response = await fetch(APP_API_ROUTES.longbridgeStatus, withSignal(signal))
+  return readJson<{
+    configured: boolean
+    host: string
+    quoteHost?: string
+    region?: string
+    disabledReason?: string
+  }>(response)
 }
 
 export const isLongPortConfigured = (creds: Partial<LongPortCreds> | null | undefined): boolean => {

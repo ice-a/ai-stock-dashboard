@@ -23,4 +23,5 @@ export interface QuoteProvider {
   fetchQuotes?(symbols: string[], options?: { signal?: AbortSignal }): Promise<ProviderResult<Quote[]>>
   fetchKLine?(symbol: string, options?: { range?: string; interval?: string; signal?: AbortSignal }): Promise<ProviderResult<KLineData | null>>
   isConfigured?(): boolean
+  refreshConfigured?(signal?: AbortSignal): Promise<void>
 }

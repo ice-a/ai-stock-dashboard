@@ -10,7 +10,7 @@ import { useAIStore } from '../stores/ai'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
 import { useMarketSession, detectMarket } from '../composables/useMarketSession'
 import { sourceManager } from '../api/sourceManager'
-import { fetchStockFullDetail, type StockFullDetail, type AIAdvice } from '../api/stockDetail'
+import { fetchStockAdviceAI, fetchStockFullDetail, type StockFullDetail } from '../api/stockDetail'
 import { formatPrice, formatPercent, formatVolume, quoteTone, timeAgoShort } from '../utils/format'
 import PriceTicker from '../components/PriceTicker.vue'
 import WatchlistButton from '../components/WatchlistButton.vue'
@@ -19,6 +19,7 @@ import type { KLinePoint } from '../types'
 import type { Market } from '../sectors/types'
 
 const KLineChart = defineAsyncComponent(() => import('../components/KLineChart.vue'))
+const StockInsightCharts = defineAsyncComponent(() => import('../components/StockInsightCharts.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +62,7 @@ const noteText = ref('')
 const targetPrice = ref<number | null>(null)
 
 const market = computed(() => detectMarket(symbol.value))
+const isAShareStock = computed(() => market.value === 'cn')
 const { isOpen } = useMarketSession()
 const isMarketOpen = computed(() => isOpen(market.value))
 
@@ -83,10 +85,12 @@ async function loadKLine() {
     if (data) {
       klinePoints.value = data.points
     } else {
-      klineError.value = '未返回 K 线'
+      klinePoints.value = []
+      klineError.value = '东方财富未返回该标的的 K 线数据。请确认代码格式，或稍后重试。'
     }
   } catch (e) {
-    klineError.value = (e as Error).message
+    klinePoints.value = []
+    klineError.value = formatMarketDataError((e as Error).message)
   } finally {
     klineLoading.value = false
   }
@@ -99,7 +103,7 @@ async function loadDetail() {
   try {
     detail.value = await fetchStockFullDetail(symbol.value, stockName.value, stockMarket.value)
   } catch (e) {
-    detailError.value = (e as Error).message
+    detailError.value = formatMarketDataError((e as Error).message)
   } finally {
     detailLoading.value = false
   }
@@ -114,18 +118,46 @@ async function generateAdvice() {
   adviceGenerating.value = true
   adviceError.value = null
   try {
-    const { fetchStockAdviceAI } = await import('../api/stockDetail')
     const advice = await fetchStockAdviceAI(symbol.value, stockName.value, stockMarket.value, klinePoints.value)
+    if (!advice) throw new Error('AI 未返回有效投资建议，请稍后重试。')
     if (detail.value) {
       detail.value.advice = advice
     } else {
       detail.value = { news: [], announcements: [], etfs: [], advice }
     }
   } catch (e) {
-    adviceError.value = (e as Error).message
+    adviceError.value = formatAdviceError((e as Error).message)
   } finally {
     adviceGenerating.value = false
   }
+}
+
+function formatAdviceError(message: string): string {
+  const cooldown = message.match(/AI_RATE_LIMIT_COOLDOWN:(\d+)/)
+  if (cooldown) {
+    return `AI 服务正在限流冷却中，请约 ${cooldown[1]} 秒后重试，或在设置页切换模型/API Key。`
+  }
+  const limited = message.match(/AI_RATE_LIMIT:(\d+):/)
+  if (limited) {
+    return `AI 服务请求过多或额度受限，请约 ${limited[1]} 秒后重试，或在设置页切换到可用额度更高的模型/API Key。`
+  }
+  if (message.includes('429') || message.toLowerCase().includes('too many requests')) {
+    return 'AI 服务请求过多或额度受限，请等待一段时间后重试，或在设置页切换到可用额度更高的模型/API Key。'
+  }
+  if (message.includes('401') || message.includes('403')) {
+    return 'AI API Key 无效或无权限，请在设置页检查 Base URL、API Key 和模型。'
+  }
+  return message || 'AI 投资建议生成失败，请稍后重试。'
+}
+
+function formatMarketDataError(message: string): string {
+  if (message.includes('502') || message.toLowerCase().includes('bad gateway')) {
+    return '行情代理请求失败，可能是上游接口临时不可用，请稍后重试。'
+  }
+  if (message.toLowerCase().includes('failed to fetch') || message.toLowerCase().includes('network')) {
+    return '网络请求失败，请检查本地网络或稍后重试。'
+  }
+  return message || '数据加载失败，请稍后重试。'
 }
 
 function setRange(r: string) {
@@ -209,7 +241,7 @@ const tabs = [
   { id: 'kline' as const, label: 'K线图' },
   { id: 'news' as const, label: '新闻' },
   { id: 'announcements' as const, label: '公告' },
-  { id: 'etfs' as const, label: 'ETF持仓' },
+  { id: 'etfs' as const, label: '相关ETF' },
 ]
 </script>
 
@@ -294,6 +326,12 @@ const tabs = [
       </div>
     </div>
 
+    <StockInsightCharts
+      v-if="klinePoints.length"
+      :data="klinePoints"
+      :currency="stats?.currency"
+    />
+
     <!-- Tab 导航 -->
     <div class="tab-nav">
       <button v-for="tab in tabs" :key="tab.id"
@@ -320,11 +358,18 @@ const tabs = [
     <!-- 新闻 Tab -->
     <section v-show="activeTab === 'news'" class="tab-content">
       <h2>相关新闻</h2>
+      <p v-if="detail?.news?.some(item => item.generatedByAI)" class="source-note small muted">
+        标记为 AI 生成的内容用于研究提示，不代表已抓取到真实新闻源。
+      </p>
+      <p v-if="detailError" class="source-note small muted">{{ detailError }}</p>
       <div v-if="detailLoading" class="loading small muted">加载中…</div>
-      <div v-else-if="!detail?.news?.length" class="empty muted">暂无新闻数据</div>
+      <div v-else-if="!detail?.news?.length" class="empty muted">东方财富未返回相关新闻，稍后可重试或使用外部链接查看。</div>
       <div v-else class="news-list">
         <a v-for="(item, i) in detail.news" :key="i" :href="item.url" target="_blank" rel="noopener" class="news-item card">
-          <div class="news-title">{{ item.title }}</div>
+          <div class="news-title-row">
+            <div class="news-title">{{ item.title }}</div>
+            <span v-if="item.generatedByAI" class="source-badge ai">AI 生成</span>
+          </div>
           <div class="news-meta small muted">
             <span>{{ item.source }}</span>
             <span v-if="item.time"> · {{ item.time }}</span>
@@ -337,11 +382,19 @@ const tabs = [
     <!-- 公告 Tab -->
     <section v-show="activeTab === 'announcements'" class="tab-content">
       <h2>公司公告</h2>
+      <p v-if="detail?.announcements?.some(item => item.generatedByAI)" class="source-note small muted">
+        标记为 AI 生成的内容用于研究提示，不代表已抓取到真实公告源。
+      </p>
+      <p v-if="!isAShareStock" class="source-note small muted">当前公开公告源仅覆盖 A 股；港股、美股等市场请通过交易所或公司 IR 页面查看正式公告。</p>
+      <p v-if="detailError" class="source-note small muted">{{ detailError }}</p>
       <div v-if="detailLoading" class="loading small muted">加载中…</div>
-      <div v-else-if="!detail?.announcements?.length" class="empty muted">暂无公告数据</div>
+      <div v-else-if="!detail?.announcements?.length" class="empty muted">{{ isAShareStock ? '东方财富未返回公告数据。' : '该市场暂无内置公告源。' }}</div>
       <div v-else class="ann-list">
         <a v-for="(item, i) in detail.announcements" :key="i" :href="item.url" target="_blank" rel="noopener" class="ann-item card">
-          <div class="ann-title">{{ item.title }}</div>
+          <div class="news-title-row">
+            <div class="ann-title">{{ item.title }}</div>
+            <span v-if="item.generatedByAI" class="source-badge ai">AI 生成</span>
+          </div>
           <div class="ann-meta small muted">
             <span v-if="item.type" class="tag-light">{{ item.type }}</span>
             <span>{{ item.time }}</span>
@@ -352,13 +405,20 @@ const tabs = [
 
     <!-- ETF 持仓 Tab -->
     <section v-show="activeTab === 'etfs'" class="tab-content">
-      <h2>ETF 持仓</h2>
+      <h2>相关 ETF</h2>
+      <p v-if="detail?.etfs?.some(item => item.generatedByAI)" class="source-note small muted">
+        标记为 AI 生成的 ETF 仅作线索，实际持仓请以基金披露文件为准。
+      </p>
+      <p class="source-note small muted">相关 ETF 为本地市场/主题映射线索，不代表实时持仓权重。</p>
       <div v-if="detailLoading" class="loading small muted">加载中…</div>
-      <div v-else-if="!detail?.etfs?.length" class="empty muted">暂无 ETF 持仓数据</div>
+      <div v-else-if="!detail?.etfs?.length" class="empty muted">暂无相关 ETF 线索</div>
       <div v-else class="etf-grid">
         <div v-for="(etf, i) in detail.etfs" :key="i" class="etf-item card"
              @click="router.push(`/stock/${encodeURIComponent(etf.etfSymbol)}`)">
-          <div class="etf-symbol">{{ etf.etfSymbol }}</div>
+          <div class="etf-head">
+            <div class="etf-symbol">{{ etf.etfSymbol }}</div>
+            <span v-if="etf.generatedByAI" class="source-badge ai">AI 生成</span>
+          </div>
           <div class="etf-name">{{ etf.etfName }}</div>
           <div class="etf-meta small muted">
             <span>{{ etf.market }}</span>
@@ -372,7 +432,7 @@ const tabs = [
     <section class="ai-advice card">
       <div class="advice-header">
         <h2>AI 投资建议</h2>
-        <button v-if="aiStore.hasCredentials && !detail?.advice"
+        <button v-if="aiStore.isConfigured && !detail?.advice"
                 class="btn primary" :disabled="adviceGenerating" @click="generateAdvice">
           <span v-if="adviceGenerating" class="spinner"></span>
           {{ adviceGenerating ? 'AI 分析中…' : '生成投资建议' }}
@@ -437,13 +497,15 @@ const tabs = [
         </router-link>
       </template>
 
-      <template v-else-if="!aiStore.hasCredentials">
-        <p class="muted small">请先在设置中配置 AI 模型以使用此功能</p>
+      <template v-else-if="!aiStore.isConfigured">
+        <p class="muted small">请先在设置中配置 AI Base URL、API Key 和模型以使用此功能</p>
       </template>
 
       <template v-else-if="adviceError">
-        <p class="neg small">{{ adviceError }}</p>
-        <button class="btn" @click="generateAdvice">重试</button>
+        <div class="advice-error">
+          <p class="neg small">{{ adviceError }}</p>
+          <button class="btn" :disabled="adviceGenerating" @click="generateAdvice">重试</button>
+        </div>
       </template>
 
       <template v-else-if="!adviceGenerating">
@@ -664,9 +726,34 @@ const tabs = [
   transition: border-color var(--transition-fast);
 }
 .news-item:hover { border-color: var(--color-link); }
+.source-note {
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-soft);
+}
+.news-title-row,
+.etf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .news-title { font-weight: 600; margin-bottom: 4px; }
 .news-meta { display: flex; gap: var(--space-2); align-items: center; }
 .news-summary { margin-top: 6px; line-height: 1.5; color: var(--color-muted); }
+.source-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.source-badge.ai {
+  background: var(--color-info-bg);
+  color: var(--color-link);
+}
 
 /* 公告列表 */
 .ann-list { display: flex; flex-direction: column; gap: var(--space-2); }

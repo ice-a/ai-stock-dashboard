@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-interface Settings {
+export interface Settings {
   theme: ThemeMode
   locale: 'zh-CN' | 'en-US'
   listInterval: number

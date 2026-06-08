@@ -1,4 +1,5 @@
 // 股票搜索 API — 东方财富搜索建议
+import { APP_API_ROUTES } from '../config/endpoints'
 
 export interface SearchResult {
   symbol: string   // 长桥格式: 00700.HK / 600519.SH
@@ -8,7 +9,7 @@ export interface SearchResult {
   type: string     // 股票 / ETF / 指数
 }
 
-const EM_SEARCH_URL = '/api/market?source=eastmoney&mode=search'
+const EM_SEARCH_URL = `${APP_API_ROUTES.market}?source=eastmoney&mode=search`
 
 // 东方财富市场代码 → 我们的 market 名称
 function mapMarket(mktId: number | string, code: string): { market: string; symbol: string } {

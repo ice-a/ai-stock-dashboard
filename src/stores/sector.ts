@@ -112,6 +112,48 @@ export const useSectorStore = defineStore('sector', () => {
     sector.updatedAt = Date.now()
   }
 
+  function exportJson(): string {
+    return JSON.stringify({
+      version: 1,
+      activeId: activeId.value,
+      sectors: sectors.value.filter(s => !s.isBuiltIn),
+    }, null, 2)
+  }
+
+  function importJson(json: string): { added: number; merged: number } {
+    try {
+      const parsed = JSON.parse(json)
+      if (!parsed || !Array.isArray(parsed.sectors)) return { added: 0, merged: 0 }
+      let added = 0
+      let merged = 0
+      const builtInIds = new Set(DEFAULT_SECTORS.map(s => s.id))
+      for (const item of parsed.sectors as Sector[]) {
+        if (!item?.id || !item.name || builtInIds.has(item.id)) continue
+        const sector: Sector = {
+          ...item,
+          stocks: Array.isArray(item.stocks) ? item.stocks : [],
+          isBuiltIn: false,
+          createdAt: Number(item.createdAt) || Date.now(),
+          updatedAt: Number(item.updatedAt) || Date.now(),
+        }
+        const index = sectors.value.findIndex(s => s.id === sector.id)
+        if (index >= 0) {
+          sectors.value[index] = sector
+          merged++
+        } else {
+          sectors.value.push(sector)
+          added++
+        }
+      }
+      if (typeof parsed.activeId === 'string' && sectors.value.some(s => s.id === parsed.activeId)) {
+        setActive(parsed.activeId)
+      }
+      return { added, merged }
+    } catch {
+      return { added: 0, merged: 0 }
+    }
+  }
+
   // 获取所有板块中的所有 symbol（去重）
   const allSymbols = computed(() => {
     const set = new Set<string>()
@@ -137,5 +179,6 @@ export const useSectorStore = defineStore('sector', () => {
     stocksByMarket, stocksByLayer, allSymbols,
     setActive, addSector, removeSector,
     addStockToSector, removeStockFromSector, updateSectorStocks,
+    exportJson, importJson,
   }
 })
