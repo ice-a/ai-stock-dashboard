@@ -33,7 +33,6 @@ interface AttemptState {
 }
 
 const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
-const USER_AUTH_COOKIE_DEFAULT = 'ai_dashboard_user'
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 const EASTMONEY_QUOTE_BASES = [
   'https://push2delay.eastmoney.com/api/qt/stock/get',
@@ -99,18 +98,6 @@ function readAiConfig() {
     temperature: readNumberEnv('AI_TEMPERATURE', 0.7),
     maxTokens: readNumberEnv('AI_MAX_TOKENS', 2000),
   }
-}
-
-function readMongoUri(): string {
-  return readEnv('MONGODB_URI')
-}
-
-function readUserAuthCookieName(): string {
-  return readEnv('USER_AUTH_COOKIE_NAME') || USER_AUTH_COOKIE_DEFAULT
-}
-
-function readUserAuthSecret(): string {
-  return readEnv('USER_AUTH_SECRET') || readAuthSecret() || readMongoUri()
 }
 
 function normalizeOpenAIBaseUrl(baseUrl: string): string {
@@ -201,10 +188,6 @@ function getAuthTokenFromCookie(header: string | null | undefined): string | nul
   return parseCookie(header)[readAuthCookieName()] || null
 }
 
-function getUserTokenFromCookie(header: string | null | undefined): string | null {
-  return parseCookie(header)[readUserAuthCookieName()] || null
-}
-
 async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
   if (!isAuthEnabled()) return true
   if (!token) return false
@@ -216,25 +199,6 @@ async function verifySessionToken(token: string | null | undefined): Promise<boo
   if (!nonce || nonce.length < 16) return false
   const expected = await hmacHex(readAuthSecret(), `${expiresRaw}.${nonce}`)
   return constantTimeEqual(signature, expected)
-}
-
-async function verifyUserSessionToken(token: string | null | undefined): Promise<string | null> {
-  if (!readMongoUri()) return null
-  if (!token) return null
-  const secret = readUserAuthSecret()
-  if (!secret) return null
-  const parts = token.split('.')
-  if (parts.length !== 2) return null
-  const [payload, signature] = parts
-  const expected = await hmacHex(secret, payload)
-  if (!constantTimeEqual(signature, expected)) return null
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { user?: string; exp?: number }
-    if (!parsed.user || !parsed.exp || parsed.exp < Date.now()) return null
-    return parsed.user.trim().toLowerCase()
-  } catch {
-    return null
-  }
 }
 
 function buildSessionCookie(token: string, secure: boolean): string {
@@ -252,18 +216,6 @@ function buildSessionCookie(token: string, secure: boolean): string {
 function buildExpiredSessionCookie(secure: boolean): string {
   const parts = [
     `${readAuthCookieName()}=`,
-    'Path=/',
-    'Max-Age=0',
-    'HttpOnly',
-    'SameSite=Lax',
-  ]
-  if (secure) parts.push('Secure')
-  return parts.join('; ')
-}
-
-function buildExpiredUserSessionCookie(secure: boolean): string {
-  const parts = [
-    `${readUserAuthCookieName()}=`,
     'Path=/',
     'Max-Age=0',
     'HttpOnly',
@@ -485,41 +437,6 @@ async function handleAuth(path: string, req: ApiRequest, res: ApiResponse): Prom
     } catch (e) {
       sendJson(res, 500, { error: 'Auth service error', message: messageFromError(e) })
     }
-    return true
-  }
-
-  return false
-}
-
-async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
-  if (!path.startsWith('account/')) return false
-
-  try {
-    if (path === 'account/status') {
-      const enabled = Boolean(readMongoUri())
-      const user = enabled ? await verifyUserSessionToken(getUserTokenFromCookie(readHeader(req, 'cookie'))) : null
-      sendJson(res, 200, { enabled, authenticated: Boolean(user), user })
-      return true
-    }
-
-    if (path === 'account/logout') {
-      res.setHeader('Set-Cookie', buildExpiredUserSessionCookie(isSecureRequest(req.headers)))
-      sendJson(res, 200, { ok: true })
-      return true
-    }
-
-    if (path === 'account/login' || path === 'account/register') {
-      if (!methodAllowed(req, res, 'POST')) return true
-      sendJson(res, 503, { error: 'MongoDB account storage is temporarily disabled on this deployment.' })
-      return true
-    }
-
-    if (path === 'account/config') {
-      sendJson(res, 503, { error: 'MongoDB account storage is temporarily disabled on this deployment.' })
-      return true
-    }
-  } catch (e) {
-    sendJson(res, statusFromError(e), { error: 'Account service error', message: messageFromError(e) })
     return true
   }
 
@@ -952,7 +869,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     if (await handleAiProxy(path, req, res)) return
     if (await handleMarket(path, req, res)) return
     if (await handleAuth(path, req, res)) return
-    if (await handleAccount(path, req, res)) return
     if (await handleAi(path, req, res)) return
     if (await handleLongbridge(path, req, res)) return
     if (await handleNotifications(path, req, res)) return

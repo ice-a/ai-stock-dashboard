@@ -52,6 +52,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '预警中心' }
   },
   {
+    path: '/market-cloud',
+    name: 'market-cloud',
+    component: () => import('../views/MarketCloudView.vue'),
+    meta: { title: '大盘云图' }
+  },
+  {
     path: '/user',
     name: 'user-info',
     component: () => import('../views/UserInfoView.vue'),
