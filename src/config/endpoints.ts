@@ -12,6 +12,7 @@ export const APP_API_ROUTES = {
   accountRegister: '/api/account/register',
   accountLogout: '/api/account/logout',
   accountConfig: '/api/account/config',
+  notificationsSend: '/api/notifications/send',
   longbridgeStatus: '/api/longbridge/status',
   longbridgeQuotes: '/api/longbridge/quotes',
   longbridgeCandlesticks: '/api/longbridge/candlesticks',

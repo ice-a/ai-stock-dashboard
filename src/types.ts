@@ -112,6 +112,24 @@ export interface PortfolioHolding {
   updatedAt: number
 }
 
+export type PortfolioTransactionType = 'buy' | 'sell'
+
+export interface PortfolioTransaction {
+  id: string
+  symbol: string
+  name: string
+  type: PortfolioTransactionType
+  price: number
+  quantity: number
+  fee: number
+  tradeDate: string
+  note: string
+  realizedProfit: number | null
+  realizedProfitRate: number | null
+  createdAt: number
+  updatedAt: number
+}
+
 export interface PortfolioHoldingComputed extends PortfolioHolding {
   currentPrice: number | null
   costAmount: number
@@ -120,6 +138,78 @@ export interface PortfolioHoldingComputed extends PortfolioHolding {
   profitRate: number | null
   daysHeld: number
   source?: Quote['source']
+}
+
+export type AlertRuleType =
+  | 'price-above'
+  | 'price-below'
+  | 'change-up'
+  | 'change-down'
+  | 'profit-rate-above'
+  | 'profit-rate-below'
+  | 'stale-quote'
+  | 'fallback-source'
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export interface AlertRule {
+  id: string
+  symbol: string
+  name: string
+  type: AlertRuleType
+  threshold: number
+  enabled: boolean
+  note: string
+  cooldownMinutes: number
+  lastTriggeredAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AlertEvent {
+  id: string
+  ruleId: string
+  symbol: string
+  name: string
+  type: AlertRuleType
+  severity: AlertSeverity
+  title: string
+  message: string
+  value: number | null
+  threshold: number
+  source?: Quote['source']
+  triggeredAt: number
+  acknowledgedAt: number | null
+}
+
+export type NotificationProvider = 'bark'
+
+export interface NotificationConfig {
+  enabled: boolean
+  provider: NotificationProvider
+  bark: {
+    serverUrl: string
+    deviceKey: string
+    group: string
+    level: 'active' | 'timeSensitive' | 'passive'
+    sound: string
+  }
+  lastTestAt: number | null
+  lastError: string
+}
+
+export type AIResearchReportKind = 'stock-advice' | 'comparison'
+
+export interface AIResearchReport {
+  id: string
+  kind: AIResearchReportKind
+  title: string
+  symbols: string[]
+  content: string
+  payload: unknown
+  model: string
+  source: 'stock-detail' | 'research-compare'
+  createdAt: number
 }
 
 export interface RefreshState {

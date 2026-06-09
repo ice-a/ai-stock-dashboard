@@ -117,12 +117,18 @@ export const useAIStore = defineStore('ai', {
     },
     applyRuntimeDefaults(config: { serverManaged: boolean; baseUrl: string; model: string; temperature: number; maxTokens: number }) {
       this.model = sanitizeModelId(this.model)
+      if (!config.serverManaged) {
+        this.serverManaged = false
+        return
+      }
       if (!this.apiKey && config.serverManaged) {
         this.serverManaged = true
         this.baseUrl = config.baseUrl || this.baseUrl
         this.model = this.model || sanitizeModelId(config.model)
         this.temperature = config.temperature ?? this.temperature
         this.maxTokens = config.maxTokens ?? this.maxTokens
+      } else {
+        this.serverManaged = false
       }
     },
   },

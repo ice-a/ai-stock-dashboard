@@ -7,6 +7,7 @@ import { useQuotesStore } from './stores/quotes'
 import { useRefreshStore } from './stores/refresh'
 import { useTopicStore } from './stores/topic'
 import { usePortfolioStore } from './stores/portfolio'
+import { useAlertsStore } from './stores/alerts'
 import { useAutoRefresh } from './composables/useAutoRefresh'
 import { ref, watch } from 'vue'
 
@@ -14,6 +15,7 @@ const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
 const topicStore = useTopicStore()
 const portfolioStore = usePortfolioStore()
+const alertsStore = useAlertsStore()
 const route = useRoute()
 
 const isPublicPage = computed(() => route.meta?.public === true)
@@ -24,6 +26,7 @@ const initialSymbols = computed(() => {
   for (const i of topicStore.currentData.watchlistIdeas) set.add(i.symbol)
   for (const s of topicStore.currentData.leaderUniverse) set.add(s.symbol)
   for (const s of portfolioStore.symbols) set.add(s)
+  for (const s of alertsStore.symbols) set.add(s)
   return [...set].slice(0, 100)  // 限制初始量
 })
 
@@ -37,6 +40,7 @@ const { refreshNow } = useAutoRefresh({
     if (isPublicPage.value) return
     if (initialSymbols.value.length === 0) return
     await quotesStore.fetchAndStore(initialSymbols.value, { force: false })
+    alertsStore.evaluateAll()
   }
 })
 

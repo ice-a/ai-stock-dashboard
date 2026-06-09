@@ -8,7 +8,10 @@ const PUBLIC_PATHS = new Set([
 function shouldBypass(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
   if (pathname.startsWith('/api/auth/')) return true
-  if (pathname.startsWith('/api/account/')) return true
+  if (pathname === '/api/account/status') return true
+  if (pathname === '/api/account/login') return true
+  if (pathname === '/api/account/register') return true
+  if (pathname === '/api/account/logout') return true
   if (pathname === '/api/config') return true
   if (pathname.startsWith('/assets/')) return true
   if (pathname.startsWith('/pwa-')) return true

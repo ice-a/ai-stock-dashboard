@@ -1,4 +1,4 @@
-import { EXTERNAL_ENDPOINTS } from '../src/config/endpoints'
+import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 
 interface ApiRequest {
   method?: string
@@ -47,8 +47,7 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       return
     }
     const query = `secid=${encodeURIComponent(secid)}&fields=${encodeURIComponent(fields)}`
-    const data = await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.quoteBases.map(base => `${base}?${query}`))
-    res.status(200).json(data)
+    res.status(200).json(await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.quoteBases.map(base => `${base}?${query}`)))
     return
   }
 
@@ -68,8 +67,7 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
       end: readQueryString(req.query?.end) || '20500101',
       lmt: readQueryString(req.query?.lmt) || '200',
     })
-    const data = await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.klineBases.map(base => `${base}?${params.toString()}`))
-    res.status(200).json(data)
+    res.status(200).json(await fetchFirstJson(EXTERNAL_ENDPOINTS.eastmoney.klineBases.map(base => `${base}?${params.toString()}`)))
     return
   }
 
@@ -139,11 +137,7 @@ async function handleEastmoney(req: ApiRequest, res: ApiResponse): Promise<void>
 }
 
 async function handleSina(req: ApiRequest, res: ApiResponse): Promise<void> {
-  const symbols = readQueryString(req.query?.symbols)
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-
+  const symbols = readQueryString(req.query?.symbols).split(',').map(s => s.trim()).filter(Boolean)
   if (symbols.length === 0) {
     res.status(400).json({ error: 'Missing symbols' })
     return
@@ -171,7 +165,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const source = readQueryString(req.query?.source)
-
   try {
     if (source === 'eastmoney') {
       await handleEastmoney(req, res)

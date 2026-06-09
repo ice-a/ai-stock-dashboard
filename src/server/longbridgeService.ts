@@ -51,6 +51,7 @@ const {
 } = EXTERNAL_ENDPOINTS.longport
 const REQUEST_TIMEOUT_MS = 8_000
 const CONNECT_TIMEOUT_MS = 4_000
+const STATUS_CACHE_MS = 60_000
 
 const CMD_AUTH = 2
 const CMD_GET_REALTIME_QUOTE = 11
@@ -136,6 +137,8 @@ const SecurityCandlestickRequest = protoRoot.lookupType('SecurityCandlestickRequ
 const SecurityCandlestickResponse = protoRoot.lookupType('SecurityCandlestickResponse')
 const ErrorMessage = protoRoot.lookupType('Error')
 
+let statusCache: { checkedAt: number; status: LongbridgeStatusDto } | null = null
+
 function getCredentials() {
   return readLongportCredentials()
 }
@@ -175,6 +178,11 @@ function isConfigured(): boolean {
   return Boolean(creds.appKey && creds.accessToken && (creds.appSecret || isBearerToken(creds.accessToken)))
 }
 
+function isAuthError(error: unknown): boolean {
+  const err = error as Partial<Error & { statusCode: number }>
+  return err.statusCode === 401 || /auth failed|token invalid|unauthorized/i.test(err.message || '')
+}
+
 function missingConfigReason(): string {
   const creds = getCredentials()
   const missing: string[] = []
@@ -193,15 +201,43 @@ function normalizeLongportSymbol(symbol: string): string {
   return upper
 }
 
-export function getLongbridgeStatus(): LongbridgeStatusDto {
+function buildLongbridgeStatus(configured: boolean, disabledReason = ''): LongbridgeStatusDto {
   return {
-    configured: isConfigured(),
+    configured,
     region: getRegion() || 'global',
     host: getHttpUrl(),
     quoteHost: getQuoteWsUrl(),
     sdkLoaded: false,
-    disabledReason: isConfigured() ? '' : missingConfigReason(),
+    disabledReason,
   }
+}
+
+export function getLongbridgeStatus(): LongbridgeStatusDto {
+  const configured = isConfigured()
+  return buildLongbridgeStatus(configured, configured ? '' : missingConfigReason())
+}
+
+export async function getLongbridgeStatusChecked(): Promise<LongbridgeStatusDto> {
+  if (!isConfigured()) return getLongbridgeStatus()
+  if (statusCache && Date.now() - statusCache.checkedAt < STATUS_CACHE_MS) {
+    return statusCache.status
+  }
+
+  try {
+    const token = await longbridgeHttp<{ otp: string; limit: number; online: number }>('GET', '/v1/socket/token')
+    const status = buildLongbridgeStatus(Boolean(token?.otp), token?.otp ? '' : 'LongPort socket token response missing otp')
+    statusCache = { checkedAt: Date.now(), status }
+    return status
+  } catch (e) {
+    if (!isAuthError(e)) throw e
+    const status = buildLongbridgeStatus(false, (e as Error).message)
+    statusCache = { checkedAt: Date.now(), status }
+    return status
+  }
+}
+
+function clearStatusCacheOnAuthError(error: unknown): void {
+  if (isAuthError(error)) statusCache = null
 }
 
 function buildQuery(query: Query): string {
@@ -404,8 +440,14 @@ async function requestWs<T>(
 }
 
 async function withQuoteWs<T>(fn: (ws: WebSocket) => Promise<T>): Promise<T> {
-  const token = await longbridgeHttp<{ otp: string; limit: number; online: number }>('GET', '/v1/socket/token')
-  if (!token?.otp) throw longportError('LongPort socket token response missing otp')
+  let token: { otp: string; limit: number; online: number }
+  try {
+    token = await longbridgeHttp<{ otp: string; limit: number; online: number }>('GET', '/v1/socket/token')
+    if (!token?.otp) throw longportError('LongPort socket token response missing otp')
+  } catch (e) {
+    clearStatusCacheOnAuthError(e)
+    throw e
+  }
   const url = new URL(getQuoteWsUrl())
   url.searchParams.set('version', '1')
   url.searchParams.set('codec', '1')

@@ -46,6 +46,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人持仓' }
   },
   {
+    path: '/alerts',
+    name: 'alerts',
+    component: () => import('../views/AlertsView.vue'),
+    meta: { title: '预警中心' }
+  },
+  {
     path: '/user',
     name: 'user-info',
     component: () => import('../views/UserInfoView.vue'),
@@ -62,6 +68,12 @@ const routes: RouteRecordRaw[] = [
     name: 'ask',
     component: () => import('../views/AskView.vue'),
     meta: { title: 'AI 问答' }
+  },
+  {
+    path: '/research',
+    name: 'research',
+    component: () => import('../views/ResearchView.vue'),
+    meta: { title: '研究库' }
   },
   {
     path: '/mystic',

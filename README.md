@@ -1,6 +1,6 @@
 # AI Stock Dashboard
 
-面向个人研究和持仓跟踪的股票看板。项目以 Vue 3 + Vite 构建，提供多源行情降级、自定义单股查询、热门股票、个人持仓盈亏、AI 研究助手和站点密码保护。
+面向个人研究和持仓跟踪的股票看板。项目以 Vue 3 + Vite 构建，提供多源行情降级、自定义单股查询、热门股票、个人持仓盈亏、预警中心、AI 研究助手和站点密码保护。
 
 ## 功能概览
 
@@ -9,8 +9,10 @@
 - **站点密码保护**：设置 `SITE_PASSWORD` 后，Vercel Middleware 会在访问网站前要求登录；登录态使用 HttpOnly Cookie。
 - **MongoDB 账户配置**：配置 `MONGODB_URI` 后启用 user/sign 登录或自动注册，个人设置、自选股、持仓、板块和 AI 模型配置可保存到 MongoDB。
 - **单股查询**：左侧菜单「自定义查询」，支持名称/代码搜索、标准代码直达、热门股票报价。
-- **个人持仓**：记录股票、买入价、手续费、购买日期和数量，自动计算成本、市值、浮动盈亏和收益率。
+- **个人持仓**：记录买入/卖出交易流水，按 FIFO 扣减仓位，自动计算成本、市值、浮动盈亏、已实现盈亏和累计收益率。
+- **预警中心**：支持价格突破/跌破、单日涨跌幅、持仓盈亏、行情过期和静态快照源预警。
 - **AI 研究助手**：支持 OpenAI 兼容接口，既可本地配置，也可通过服务端 `AI_*` 环境变量托管 API Key。
+- **研究报告库**：个股 AI 建议自动归档，支持 2-6 只股票横向对比分析。
 - **研究板块与自选股**：内置 AI、半导体、新能源、生物科技等板块，支持自选备注、目标价和详情页 K 线。
 - **适配 Vercel**：包含 API Routes、Middleware、Vite 构建配置，并移除了超出 Vercel 函数体积限制的 Longbridge 原生依赖。
 
@@ -39,7 +41,9 @@ http://localhost:5173
 
 ```bash
 npm run typecheck
+npm run test
 npm run build
+npm run verify
 npm run preview
 ```
 
@@ -154,7 +158,7 @@ MongoDB 账户：
 | --- | --- | --- |
 | Vite 环境变量 | [Env Variables and Modes](https://vite.dev/guide/env-and-mode) | 服务端密钥不使用 `VITE_` 前缀，避免打包进浏览器 |
 | Vercel 环境变量 | [Environment Variables](https://vercel.com/docs/environment-variables) | 生产环境在 Project Settings 配置 `SITE_PASSWORD`，以及可选 `MONGODB_URI` / `AI_*` / `LONGPORT_*` |
-| Vercel Node.js Functions | [Node.js Runtime](https://vercel.com/docs/functions/runtimes/node-js) | `api/**/*.ts` 和 `api/longbridge/_service.js` 作为服务端 API |
+| Vercel Node.js Functions | [Node.js Runtime](https://vercel.com/docs/functions/runtimes/node-js) | `api/[...path].ts` 单一 catch-all 函数分发服务端 API，避免 Hobby 计划函数数量限制 |
 | Vercel 项目配置 | [Project Configuration](https://vercel.com/docs/project-configuration) | `vercel.json` 负责 SPA rewrite 和静态资源缓存 |
 | OpenAI Chat Completions | [Create chat completion](https://platform.openai.com/docs/api-reference/chat/create) | `src/server/aiService.ts` 请求 `/chat/completions` |
 | OpenAI Models | [List models](https://platform.openai.com/docs/api-reference/models/list) | 设置页模型列表请求 `/models` |
@@ -168,7 +172,7 @@ MongoDB 账户：
 4. 在 Environment Variables 中配置 `SITE_PASSWORD`，以及可选 `MONGODB_URI` / `USER_AUTH_SECRET` / `AI_API_KEY` / `AI_MODEL`。长桥变量只在需要备用长桥行情时配置。
 5. 部署后访问站点，会先进入 `/login`。
 
-项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。默认行情链路会优先请求东方财富，失败后自动降级到 Sina、长桥和静态快照。`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK。
+项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。默认行情链路会优先请求东方财富，失败后自动降级到 Sina、长桥和静态快照。所有 `/api/*` 路由由 `api/[...path].ts` 统一分发，`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK。
 
 ## 项目结构
 

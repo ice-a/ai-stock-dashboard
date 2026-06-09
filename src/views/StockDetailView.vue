@@ -7,11 +7,12 @@ import { useWatchlistStore } from '../stores/watchlist'
 import { useSectorStore } from '../stores/sector'
 import { useRefreshStore } from '../stores/refresh'
 import { useAIStore } from '../stores/ai'
+import { useResearchStore } from '../stores/research'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
 import { useMarketSession, detectMarket } from '../composables/useMarketSession'
 import { sourceManager } from '../api/sourceManager'
 import { fetchStockAdviceAI, fetchStockFullDetail, type StockFullDetail } from '../api/stockDetail'
-import { formatPrice, formatPercent, formatVolume, quoteTone, timeAgoShort } from '../utils/format'
+import { formatDate, formatPrice, formatPercent, formatVolume, quoteTone, timeAgoShort } from '../utils/format'
 import PriceTicker from '../components/PriceTicker.vue'
 import WatchlistButton from '../components/WatchlistButton.vue'
 import ExternalLinks from '../components/ExternalLinks.vue'
@@ -29,6 +30,7 @@ const watchlistStore = useWatchlistStore()
 const sectorStore = useSectorStore()
 const refreshStore = useRefreshStore()
 const aiStore = useAIStore()
+const researchStore = useResearchStore()
 
 const symbol = computed(() => decodeURIComponent(String(route.params.symbol || '')))
 const klineRange = ref('6mo')
@@ -48,6 +50,7 @@ const stockMarket = computed<Market>(() => (sectorStock.value?.market as Market)
 
 const quote = computed(() => quotesStore.get(symbol.value))
 const favorite = computed(() => watchlistStore.bySymbol.get(symbol.value))
+const researchHistory = computed(() => researchStore.bySymbol(symbol.value).slice(0, 6))
 
 const klinePoints = ref<KLinePoint[]>([])
 const klineLoading = ref(false)
@@ -125,6 +128,12 @@ async function generateAdvice() {
     } else {
       detail.value = { news: [], announcements: [], etfs: [], advice }
     }
+    researchStore.addStockAdviceReport({
+      symbol: symbol.value,
+      name: stockName.value,
+      advice,
+      model: aiStore.model,
+    })
   } catch (e) {
     adviceError.value = formatAdviceError((e as Error).message)
   } finally {
@@ -513,6 +522,27 @@ const tabs = [
       </template>
     </section>
 
+    <section class="research-history card">
+      <div class="section-head">
+        <h2>研究报告历史</h2>
+        <router-link to="/research" class="small">打开研究库 →</router-link>
+      </div>
+      <div v-if="!researchHistory.length" class="empty muted">暂无历史报告。生成 AI 投资建议后会自动归档。</div>
+      <div v-else class="report-list">
+        <article v-for="report in researchHistory" :key="report.id" class="report-item">
+          <div class="report-head">
+            <strong>{{ report.title }}</strong>
+            <span class="small muted">{{ formatDate(report.createdAt, 'relative') }}</span>
+          </div>
+          <p>{{ report.content.slice(0, 220) }}{{ report.content.length > 220 ? '...' : '' }}</p>
+          <div class="report-meta small muted">
+            <span>{{ report.kind === 'comparison' ? '对比分析' : '个股建议' }}</span>
+            <span v-if="report.model">模型 {{ report.model }}</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <!-- 自选备注 -->
     <section class="fav-section">
       <h2>自选备注</h2>
@@ -859,6 +889,33 @@ const tabs = [
 }
 .ask-link { color: var(--color-link); text-decoration: none; display: inline-block; margin-top: var(--space-2); }
 .ask-link:hover { text-decoration: underline; }
+
+.research-history {
+  margin-bottom: var(--space-5);
+}
+.report-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.report-item {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-muted);
+}
+.report-head,
+.report-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.report-item p {
+  margin: var(--space-2) 0;
+  white-space: pre-line;
+  color: var(--color-ink-soft);
+}
 
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }

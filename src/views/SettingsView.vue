@@ -8,6 +8,7 @@ import { useWatchlistStore } from '../stores/watchlist'
 import { usePortfolioStore } from '../stores/portfolio'
 import { useSectorStore } from '../stores/sector'
 import { useAIStore } from '../stores/ai'
+import { useNotificationsStore } from '../stores/notifications'
 import { useRuntimeConfigStore } from '../stores/runtimeConfig'
 import { useAccountStore } from '../stores/account'
 import { listModels, type ModelInfo } from '../api/ai'
@@ -23,6 +24,7 @@ const watchlist = useWatchlistStore()
 const portfolio = usePortfolioStore()
 const sectorStore = useSectorStore()
 const aiStore = useAIStore()
+const notifications = useNotificationsStore()
 const runtimeConfig = useRuntimeConfigStore()
 const accountStore = useAccountStore()
 
@@ -32,6 +34,7 @@ const modelLoading = ref(false)
 const modelTestResult = ref<string | null>(null)
 const cloudSyncing = ref(false)
 const cloudSyncResult = ref<string | null>(null)
+const notificationResult = ref<string | null>(null)
 
 // 合并当前拉取的模型和已保存的模型列表
 const allModels = computed(() => {
@@ -60,6 +63,18 @@ onMounted(() => {
 function saveAI() {
   aiStore.save()
   modelTestResult.value = '✓ 已保存'
+}
+
+function saveNotifications() {
+  notifications.save()
+  notificationResult.value = '✓ 已保存'
+}
+
+async function testNotifications() {
+  notifications.save()
+  notificationResult.value = '正在发送测试通知…'
+  const ok = await notifications.test()
+  notificationResult.value = ok ? '✓ 测试通知已发送' : `✗ ${notifications.config.lastError || '发送失败'}`
 }
 
 async function saveCloudConfig() {
@@ -365,6 +380,53 @@ function onAllFileSelected(e: Event) {
         <span>自选股：{{ watchlist.items.length }} 只</span>
         <span>持仓：{{ portfolio.holdings.length }} 条</span>
         <span>自定义板块：{{ sectorStore.customSectors.length }} 个</span>
+      </div>
+    </section>
+
+    <section class="card section">
+      <h2>Webhook 通知</h2>
+      <p class="small muted">当前支持 Bark；预警触发时会发送通知，后续可扩展其他 webhook provider。</p>
+      <div class="form-row">
+        <label class="switch">
+          <input v-model="notifications.config.enabled" type="checkbox" />
+          <span>启用通知</span>
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="lbl small muted">Provider</label>
+        <select v-model="notifications.config.provider">
+          <option value="bark">Bark</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="lbl small muted">Bark Server</label>
+        <input v-model="notifications.config.bark.serverUrl" type="text" placeholder="https://api.day.app" class="grow" />
+      </div>
+      <div class="form-row">
+        <label class="lbl small muted">Device Key</label>
+        <input v-model="notifications.config.bark.deviceKey" type="password" placeholder="Bark 推送 key" class="grow" />
+      </div>
+      <div class="form-row">
+        <label class="lbl small muted">分组</label>
+        <input v-model="notifications.config.bark.group" type="text" placeholder="AI Stock Dashboard" />
+        <label class="lbl small muted">级别</label>
+        <select v-model="notifications.config.bark.level">
+          <option value="active">active</option>
+          <option value="timeSensitive">timeSensitive</option>
+          <option value="passive">passive</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="lbl small muted">声音</label>
+        <input v-model="notifications.config.bark.sound" type="text" placeholder="可选，如 glass" />
+      </div>
+      <div class="form-row">
+        <button class="btn primary" @click="saveNotifications">保存通知配置</button>
+        <button class="btn" :disabled="notifications.sending || !notifications.config.bark.deviceKey" @click="testNotifications">
+          <span v-if="notifications.sending" class="spinner"></span>
+          发送测试
+        </button>
+        <span v-if="notificationResult" class="test-result small" :class="notificationResult.startsWith('✓') ? 'pos' : 'neg'">{{ notificationResult }}</span>
       </div>
     </section>
 
