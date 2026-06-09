@@ -725,9 +725,9 @@ async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Pr
   if (path !== 'market') return false
   if (!methodAllowed(req, res, 'GET')) return true
   const source = readQueryString(req.query?.source)
+  const mode = readQueryString(req.query?.mode)
   try {
     if (source === 'eastmoney') {
-      const mode = readQueryString(req.query?.mode)
       if (mode === 'quote') {
         const secid = readQueryString(req.query?.secid)
         const fields = readQueryString(req.query?.fields)
@@ -847,6 +847,29 @@ async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Pr
 
     sendJson(res, 404, { error: 'Unknown market source' })
   } catch (e) {
+    if (source === 'eastmoney') {
+      const error = messageFromError(e)
+      if (mode === 'quote') {
+        sendJson(res, 200, { data: null, error })
+        return true
+      }
+      if (mode === 'kline') {
+        sendJson(res, 200, { data: { klines: [] }, error })
+        return true
+      }
+      if (mode === 'search') {
+        sendJson(res, 200, { QuotationCodeTable: { Data: [] }, error })
+        return true
+      }
+      if (mode === 'announcements') {
+        sendJson(res, 200, { data: { list: [] }, error })
+        return true
+      }
+      if (mode === 'news') {
+        sendJson(res, 200, { result: { cmsArticleWebOld: [] }, error })
+        return true
+      }
+    }
     sendJson(res, statusFromError(e, 502), { error: messageFromError(e) })
   }
   return true
