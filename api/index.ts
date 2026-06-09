@@ -615,7 +615,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   try {
     const path = pathFromRequest(req)
 
-    if (!path || path === 'config') {
+    if (!path || path === 'config' || path === 'runtime-config') {
       sendJson(res, 200, getRuntimeConfig())
       return
     }

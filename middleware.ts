@@ -13,6 +13,7 @@ function shouldBypass(pathname: string): boolean {
   if (pathname === '/api/account/register') return true
   if (pathname === '/api/account/logout') return true
   if (pathname === '/api/config') return true
+  if (pathname === '/api/runtime-config') return true
   if (pathname.startsWith('/assets/')) return true
   if (pathname.startsWith('/pwa-')) return true
   if (pathname.endsWith('.png') || pathname.endsWith('.ico') || pathname.endsWith('.svg')) return true

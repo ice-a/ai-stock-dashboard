@@ -51,7 +51,7 @@ npm run preview
 
 `.env.example` 只保留最小模板。生产部署建议在 Vercel Project Settings 中配置，不要提交真实 `.env`。
 
-配置读取入口已经收口到 `src/server/env.ts`，非敏感运行时配置由 `src/server/runtimeConfig.ts` 输出给前端 `/api/config`。前端不会读取未加 `VITE_` 前缀的密钥，AI Key、长桥凭证和站点密码都只在服务端使用。
+配置读取入口已经收口到 `src/server/env.ts`，非敏感运行时配置由 `src/server/runtimeConfig.ts` 输出给前端 `/api/runtime-config`。前端不会读取未加 `VITE_` 前缀的密钥，AI Key、长桥凭证和站点密码都只在服务端使用。
 
 ### 最小配置
 
@@ -120,7 +120,7 @@ MongoDB 账户：
 
 | 路径 | 调用方 | 说明 |
 | --- | --- | --- |
-| `/api/config` | 前端启动 | 返回非敏感运行时配置 |
+| `/api/runtime-config` | 前端启动 | 返回非敏感运行时配置 |
 | `/api/auth/status` | 登录页 | 返回密码保护状态和 Cookie 登录状态 |
 | `/api/auth/login` | 登录页 | 校验密码并写入 HttpOnly Cookie |
 | `/api/auth/logout` | 设置页/用户操作 | 清除登录 Cookie |

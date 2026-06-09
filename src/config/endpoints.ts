@@ -1,5 +1,5 @@
 export const APP_API_ROUTES = {
-  config: '/api/config',
+  config: '/api/runtime-config',
   aiModels: '/api/ai/models',
   aiChat: '/api/ai/chat',
   aiChatStream: '/api/ai/chat-stream',
