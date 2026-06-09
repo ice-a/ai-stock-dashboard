@@ -1,6 +1,3 @@
-import { getRuntimeConfig } from '../src/server/runtimeConfig'
-import type { ChatMessage } from '../src/api/ai'
-
 interface ApiRequest {
   method?: string
   headers: Record<string, string | string[] | undefined>
@@ -18,11 +15,228 @@ interface ApiResponse {
   end(chunk?: unknown): void
 }
 
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
 interface ChatBody {
   messages?: ChatMessage[]
   model?: string
   temperature?: number
   maxTokens?: number
+}
+
+interface AttemptState {
+  count: number
+  resetAt: number
+}
+
+const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
+const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const loginAttempts = new Map<string, AttemptState>()
+let cryptoModulePromise: Promise<typeof import('node:crypto')> | null = null
+
+function loadNodeCrypto(): Promise<typeof import('node:crypto')> {
+  cryptoModulePromise ||= import('node:crypto')
+  return cryptoModulePromise
+}
+
+function readEnv(name: string): string {
+  return process.env[name]?.trim() || ''
+}
+
+function readNumberEnv(name: string, fallback: number): number {
+  const raw = readEnv(name)
+  if (!raw) return fallback
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : fallback
+}
+
+function readOptionalNumberEnv(name: string): number | null {
+  const raw = readEnv(name)
+  if (!raw) return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : null
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const value = Math.floor(readNumberEnv(name, fallback))
+  return value > 0 ? value : fallback
+}
+
+function readSitePassword(): string {
+  return readEnv('SITE_PASSWORD') || readEnv('APP_PASSWORD')
+}
+
+function readAuthCookieName(): string {
+  return readEnv('SITE_AUTH_COOKIE_NAME') || AUTH_COOKIE_DEFAULT
+}
+
+function readAuthSecret(): string {
+  return readEnv('SITE_AUTH_SECRET') || readSitePassword()
+}
+
+function readAiConfig() {
+  return {
+    apiKey: readEnv('AI_API_KEY') || readEnv('OPENAI_API_KEY'),
+    baseUrl: readEnv('AI_BASE_URL') || readEnv('OPENAI_BASE_URL') || OPENAI_DEFAULT_BASE_URL,
+    model: readEnv('AI_MODEL') || readEnv('OPENAI_MODEL'),
+    temperature: readNumberEnv('AI_TEMPERATURE', 0.7),
+    maxTokens: readNumberEnv('AI_MAX_TOKENS', 2000),
+  }
+}
+
+function getRuntimeConfig() {
+  const ai = readAiConfig()
+  return {
+    auth: {
+      enabled: Boolean(readSitePassword()),
+    },
+    ai: {
+      serverManaged: Boolean(ai.apiKey),
+      baseUrl: ai.baseUrl || OPENAI_DEFAULT_BASE_URL,
+      model: ai.model,
+      temperature: ai.temperature,
+      maxTokens: ai.maxTokens,
+    },
+    refresh: {
+      listInterval: readOptionalNumberEnv('APP_LIST_REFRESH_SECONDS'),
+      detailInterval: readOptionalNumberEnv('APP_DETAIL_REFRESH_SECONDS'),
+    },
+  }
+}
+
+function isAuthEnabled(): boolean {
+  return Boolean(readSitePassword())
+}
+
+function getAuthMaxAgeSeconds(): number {
+  return readPositiveIntegerEnv('SITE_AUTH_MAX_AGE_SECONDS', 7 * 24 * 60 * 60)
+}
+
+async function hmacHex(secret: string, message: string): Promise<string> {
+  const { createHmac } = await loadNodeCrypto()
+  return createHmac('sha256', secret).update(message).digest('hex')
+}
+
+async function sha256Hex(message: string): Promise<string> {
+  const { createHash } = await loadNodeCrypto()
+  return createHash('sha256').update(message).digest('hex')
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+async function randomHex(bytes = 16): Promise<string> {
+  const { randomBytes } = await loadNodeCrypto()
+  return randomBytes(bytes).toString('hex')
+}
+
+async function verifyPassword(input: string): Promise<boolean> {
+  const password = readSitePassword()
+  if (!password) return true
+  return constantTimeEqual(await sha256Hex(input.trim()), await sha256Hex(password))
+}
+
+async function createSessionToken(): Promise<string> {
+  const expiresAt = Date.now() + getAuthMaxAgeSeconds() * 1000
+  const payload = `${expiresAt}.${await randomHex()}`
+  const signature = await hmacHex(readAuthSecret(), payload)
+  return `${payload}.${signature}`
+}
+
+function parseCookie(header: string | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!header) return out
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=')
+    if (index < 0) continue
+    const key = part.slice(0, index).trim()
+    const value = part.slice(index + 1).trim()
+    if (key) out[key] = decodeURIComponent(value)
+  }
+  return out
+}
+
+function getAuthTokenFromCookie(header: string | null | undefined): string | null {
+  return parseCookie(header)[readAuthCookieName()] || null
+}
+
+async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
+  if (!isAuthEnabled()) return true
+  if (!token) return false
+  const parts = token.split('.')
+  if (parts.length !== 3) return false
+  const [expiresRaw, nonce, signature] = parts
+  const expiresAt = Number(expiresRaw)
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false
+  if (!nonce || nonce.length < 16) return false
+  const expected = await hmacHex(readAuthSecret(), `${expiresRaw}.${nonce}`)
+  return constantTimeEqual(signature, expected)
+}
+
+function buildSessionCookie(token: string, secure: boolean): string {
+  const parts = [
+    `${readAuthCookieName()}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${getAuthMaxAgeSeconds()}`,
+    'HttpOnly',
+    'SameSite=Lax',
+  ]
+  if (secure) parts.push('Secure')
+  return parts.join('; ')
+}
+
+function buildExpiredSessionCookie(secure: boolean): string {
+  const parts = [
+    `${readAuthCookieName()}=`,
+    'Path=/',
+    'Max-Age=0',
+    'HttpOnly',
+    'SameSite=Lax',
+  ]
+  if (secure) parts.push('Secure')
+  return parts.join('; ')
+}
+
+function isSecureRequest(headers: { [key: string]: string | string[] | undefined }): boolean {
+  const proto = readHeader({ headers }, 'x-forwarded-proto')
+  const host = readHeader({ headers }, 'host')
+  if (proto) return proto === 'https'
+  return !/^localhost(:\d+)?$|^127\.0\.0\.1(:\d+)?$/.test(host)
+}
+
+function getRequestIp(headers: { [key: string]: string | string[] | undefined }): string {
+  const forwarded = headers['x-forwarded-for'] || headers['X-Forwarded-For']
+  const value = Array.isArray(forwarded) ? forwarded[0] : forwarded
+  return value?.split(',')[0]?.trim() || 'local'
+}
+
+function checkLoginAttempt(key: string): { ok: boolean; retryAfter: number } {
+  const now = Date.now()
+  const windowMs = 5 * 60 * 1000
+  const maxAttempts = readPositiveIntegerEnv('SITE_AUTH_MAX_ATTEMPTS', 10)
+  const current = loginAttempts.get(key)
+
+  if (!current || current.resetAt <= now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + windowMs })
+    return { ok: true, retryAfter: 0 }
+  }
+
+  current.count += 1
+  if (current.count > maxAttempts) {
+    return { ok: false, retryAfter: Math.ceil((current.resetAt - now) / 1000) }
+  }
+  return { ok: true, retryAfter: 0 }
+}
+
+function clearLoginAttempts(key: string): void {
+  loginAttempts.delete(key)
 }
 
 function readHeader(req: ApiRequest, name: string): string {
@@ -91,16 +305,14 @@ function pathFromRequest(req: ApiRequest): string {
 
 async function handleAuth(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
   if (path === 'auth/status') {
-    const auth = await import('../src/server/auth')
-    const enabled = auth.isAuthEnabled()
-    const authenticated = await auth.verifySessionToken(auth.getAuthTokenFromCookie(readHeader(req, 'cookie')))
+    const enabled = isAuthEnabled()
+    const authenticated = await verifySessionToken(getAuthTokenFromCookie(readHeader(req, 'cookie')))
     sendJson(res, 200, { enabled, authenticated })
     return true
   }
 
   if (path === 'auth/logout') {
-    const auth = await import('../src/server/auth')
-    res.setHeader('Set-Cookie', auth.buildExpiredSessionCookie(auth.isSecureRequest(req.headers)))
+    res.setHeader('Set-Cookie', buildExpiredSessionCookie(isSecureRequest(req.headers)))
     sendJson(res, 200, { ok: true })
     return true
   }
@@ -108,15 +320,13 @@ async function handleAuth(path: string, req: ApiRequest, res: ApiResponse): Prom
   if (path === 'auth/login') {
     if (!methodAllowed(req, res, 'POST')) return true
     try {
-      const auth = await import('../src/server/auth')
-      const rateLimit = await import('../src/server/rateLimit')
-      if (!auth.isAuthEnabled()) {
+      if (!isAuthEnabled()) {
         sendJson(res, 200, { ok: true, disabled: true })
         return true
       }
 
-      const ip = rateLimit.getRequestIp(req.headers)
-      const attempt = rateLimit.checkLoginAttempt(ip)
+      const ip = getRequestIp(req.headers)
+      const attempt = checkLoginAttempt(ip)
       if (!attempt.ok) {
         res.setHeader('Retry-After', String(attempt.retryAfter))
         sendJson(res, 429, { error: 'Too many attempts' })
@@ -124,15 +334,15 @@ async function handleAuth(path: string, req: ApiRequest, res: ApiResponse): Prom
       }
 
       const body = await readJsonBody<{ password: string }>(req)
-      if (!(await auth.verifyPassword(String(body.password || '')))) {
+      if (!(await verifyPassword(String(body.password || '')))) {
         await new Promise(resolve => setTimeout(resolve, 350))
         sendJson(res, 401, { error: 'Invalid password' })
         return true
       }
 
-      rateLimit.clearLoginAttempts(ip)
-      const token = await auth.createSessionToken()
-      res.setHeader('Set-Cookie', auth.buildSessionCookie(token, auth.isSecureRequest(req.headers)))
+      clearLoginAttempts(ip)
+      const token = await createSessionToken()
+      res.setHeader('Set-Cookie', buildSessionCookie(token, isSecureRequest(req.headers)))
       sendJson(res, 200, { ok: true })
     } catch (e) {
       sendJson(res, 500, { error: 'Auth service error', message: messageFromError(e) })
@@ -402,24 +612,28 @@ async function handleNotifications(path: string, req: ApiRequest, res: ApiRespon
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-  const path = pathFromRequest(req)
+  try {
+    const path = pathFromRequest(req)
 
-  if (!path || path === 'config') {
-    sendJson(res, 200, getRuntimeConfig())
-    return
+    if (!path || path === 'config') {
+      sendJson(res, 200, getRuntimeConfig())
+      return
+    }
+
+    if (path === 'market') {
+      const market = await import('../src/server/marketApi')
+      await market.default(req, res)
+      return
+    }
+
+    if (await handleAuth(path, req, res)) return
+    if (await handleAccount(path, req, res)) return
+    if (await handleAi(path, req, res)) return
+    if (await handleLongbridge(path, req, res)) return
+    if (await handleNotifications(path, req, res)) return
+
+    sendJson(res, 404, { error: 'Not found' })
+  } catch (e) {
+    sendJson(res, statusFromError(e), { error: 'API service error', message: messageFromError(e) })
   }
-
-  if (path === 'market') {
-    const market = await import('../src/server/marketApi')
-    await market.default(req, res)
-    return
-  }
-
-  if (await handleAuth(path, req, res)) return
-  if (await handleAccount(path, req, res)) return
-  if (await handleAi(path, req, res)) return
-  if (await handleLongbridge(path, req, res)) return
-  if (await handleNotifications(path, req, res)) return
-
-  sendJson(res, 404, { error: 'Not found' })
 }
