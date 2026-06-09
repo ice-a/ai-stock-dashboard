@@ -11,7 +11,9 @@ function renderInline(value: string): string {
   return escapeHtml(value)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_]+)_/g, '<em>$1</em>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
 }
 
@@ -21,6 +23,10 @@ function isTableSeparator(line: string): boolean {
 
 function parseTableRow(line: string): string[] {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim())
+}
+
+function isHorizontalRule(line: string): boolean {
+  return /^(\s*)(-{3,}|\*{3,}|_{3,})(\s*)$/.test(line)
 }
 
 export function renderMarkdown(content: string): string {
@@ -78,6 +84,13 @@ export function renderMarkdown(content: string): string {
       continue
     }
 
+    if (isHorizontalRule(trimmed)) {
+      flushParagraph()
+      closeList()
+      out.push('<hr>')
+      continue
+    }
+
     if (trimmed.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
       flushParagraph()
       closeList()
@@ -98,7 +111,7 @@ export function renderMarkdown(content: string): string {
       continue
     }
 
-    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    const heading = trimmed.match(/^(#{1,5})\s+(.+)$/)
     if (heading) {
       flushParagraph()
       closeList()
@@ -115,7 +128,7 @@ export function renderMarkdown(content: string): string {
       continue
     }
 
-    const bullet = trimmed.match(/^[-*]\s+(.+)$/)
+    const bullet = trimmed.match(/^[-*+]\s+(.+)$/)
     if (bullet) {
       flushParagraph()
       if (listType !== 'ul') {
@@ -154,6 +167,7 @@ export function markdownToText(content: string): string {
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[*_`>#|-]/g, ' ')
+    .replace(/\|/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }

@@ -657,6 +657,31 @@ async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Pr
         return true
       }
 
+      if (mode === 'quotes') {
+        const secids = readQueryString(req.query?.secids)
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+          .slice(0, 50)
+        const fields = readQueryString(req.query?.fields)
+        if (!secids.length || !fields) {
+          sendJson(res, 400, { error: 'Missing secids or fields' })
+          return true
+        }
+
+        const data = await Promise.all(secids.map(async (secid) => {
+          const query = `secid=${encodeURIComponent(secid)}&fields=${encodeURIComponent(fields)}`
+          try {
+            const json = await fetchFirstJson(EASTMONEY_QUOTE_BASES.map(base => `${base}?${query}`)) as { data?: unknown }
+            return { secid, data: json.data ?? null }
+          } catch (e) {
+            return { secid, data: null, error: messageFromError(e) }
+          }
+        }))
+        sendJson(res, 200, { data })
+        return true
+      }
+
       if (mode === 'kline') {
         const secid = readQueryString(req.query?.secid)
         if (!secid) {
@@ -768,6 +793,10 @@ async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Pr
       const error = messageFromError(e)
       if (mode === 'quote') {
         sendJson(res, 200, { data: null, error })
+        return true
+      }
+      if (mode === 'quotes') {
+        sendJson(res, 200, { data: [], error })
         return true
       }
       if (mode === 'kline') {

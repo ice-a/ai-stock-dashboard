@@ -16,6 +16,7 @@ import { formatDate, formatPrice, formatPercent, formatVolume, quoteTone, timeAg
 import PriceTicker from '../components/PriceTicker.vue'
 import WatchlistButton from '../components/WatchlistButton.vue'
 import ExternalLinks from '../components/ExternalLinks.vue'
+import { markdownToText, renderMarkdown } from '../utils/markdown'
 import type { KLinePoint } from '../types'
 import type { Market } from '../sectors/types'
 
@@ -60,6 +61,7 @@ const klineError = ref<string | null>(null)
 const detail = ref<StockFullDetail | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
+const expandedReportIds = ref<Set<string>>(new Set())
 
 const noteText = ref('')
 const targetPrice = ref<number | null>(null)
@@ -181,6 +183,22 @@ function saveNote() {
   } else {
     watchlistStore.add(symbol.value, 'default', noteText.value, targetPrice.value)
   }
+}
+
+function isReportExpanded(id: string): boolean {
+  return expandedReportIds.value.has(id)
+}
+
+function toggleReport(id: string) {
+  const next = new Set(expandedReportIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedReportIds.value = next
+}
+
+function reportPreview(content: string): string {
+  const text = markdownToText(content)
+  return text.slice(0, 220) + (text.length > 220 ? '...' : '')
 }
 
 onMounted(() => {
@@ -534,10 +552,18 @@ const tabs = [
             <strong>{{ report.title }}</strong>
             <span class="small muted">{{ formatDate(report.createdAt, 'relative') }}</span>
           </div>
-          <p>{{ report.content.slice(0, 220) }}{{ report.content.length > 220 ? '...' : '' }}</p>
+          <article
+            v-if="isReportExpanded(report.id)"
+            class="markdown-body compact-report"
+            v-html="renderMarkdown(report.content)"
+          ></article>
+          <p v-else>{{ reportPreview(report.content) }}</p>
           <div class="report-meta small muted">
             <span>{{ report.kind === 'comparison' ? '对比分析' : '个股建议' }}</span>
             <span v-if="report.model">模型 {{ report.model }}</span>
+            <button class="link-btn small" @click="toggleReport(report.id)">
+              {{ isReportExpanded(report.id) ? '收起' : '阅读' }}
+            </button>
           </div>
         </article>
       </div>
@@ -913,9 +939,22 @@ const tabs = [
 }
 .report-item p {
   margin: var(--space-2) 0;
-  white-space: pre-line;
   color: var(--color-ink-soft);
 }
+.compact-report {
+  max-height: 420px;
+  margin: var(--space-2) 0;
+  overflow: auto;
+  padding-right: var(--space-2);
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-link);
+  cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
 
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }

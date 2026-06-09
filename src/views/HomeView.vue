@@ -252,7 +252,7 @@ function goToStock(symbol: string) {
 
     <!-- 全球指数 -->
     <section class="indices-section">
-      <div class="indices-scroll">
+      <div class="indices-grid">
         <div v-for="idx in indices" :key="idx.code" class="index-chip"
              :class="idx.changePct >= 0 ? 'pos' : 'neg'">
           <span class="idx-icon">{{ idx.icon }}</span>
@@ -425,29 +425,42 @@ function goToStock(symbol: string) {
 .indices-section {
   margin-bottom: var(--space-5);
 }
-.indices-scroll {
-  display: flex;
+.indices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   gap: var(--space-2);
-  overflow-x: auto;
-  padding-bottom: var(--space-1);
-  -webkit-overflow-scrolling: touch;
 }
 .index-chip {
-  display: flex;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
+  row-gap: 2px;
   padding: 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
-  white-space: nowrap;
   font-size: var(--fs-sm);
-  flex-shrink: 0;
 }
 .idx-icon { font-size: 14px; }
-.idx-name { font-weight: 600; }
-.idx-price { font-variant-numeric: tabular-nums; }
-.idx-change { font-weight: 600; font-variant-numeric: tabular-nums; }
+.idx-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.idx-price {
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+}
+.idx-change {
+  grid-column: 2 / 4;
+  justify-self: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 
 .hero { margin-bottom: var(--space-5); }
 .hero-hitokoto {
@@ -607,5 +620,11 @@ function goToStock(symbol: string) {
   .rankings { grid-template-columns: 1fr; }
   .stock-grid { grid-template-columns: 1fr; }
   .layers-grid { grid-template-columns: 1fr; }
+  .indices-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .index-chip { padding-inline: 10px; }
+}
+
+@media (max-width: 420px) {
+  .indices-grid { grid-template-columns: 1fr; }
 }
 </style>

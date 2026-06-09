@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -9,7 +9,6 @@ import { useTopicStore } from './stores/topic'
 import { usePortfolioStore } from './stores/portfolio'
 import { useAlertsStore } from './stores/alerts'
 import { useAutoRefresh } from './composables/useAutoRefresh'
-import { ref, watch } from 'vue'
 
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
@@ -50,14 +49,25 @@ watch(() => topicStore.activeId, () => {
   refreshNow()
 })
 
-// 启动时立即拉一次
+// 启动后延迟预热全局行情，避免和首屏页面自己的请求抢网络。
 const bootstrapped = ref(false)
-if (!bootstrapped.value) {
-  bootstrapped.value = true
-  setTimeout(() => {
+
+function scheduleInitialRefresh() {
+  const run = () => {
     if (!isPublicPage.value) refreshNow()
-  }, 100)
+  }
+  const idle = (window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  }).requestIdleCallback
+  if (idle) idle(run, { timeout: 2000 })
+  else window.setTimeout(run, 1200)
 }
+
+onMounted(() => {
+  if (bootstrapped.value) return
+  bootstrapped.value = true
+  scheduleInitialRefresh()
+})
 
 function handleRefresh() {
   refreshNow()

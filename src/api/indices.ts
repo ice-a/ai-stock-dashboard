@@ -27,17 +27,25 @@ const INDEX_LIST: Array<{ secid: string; code: string; name: string; region: str
 ]
 
 export async function fetchIndices(): Promise<MarketIndex[]> {
-  const tasks = INDEX_LIST.map(async (idx) => {
-    try {
-      const params = new URLSearchParams({
-        mode: 'quote',
-        secid: idx.secid,
-        fields: 'f43,f169,f170,f58',
-      })
-      const r = await fetch(`${APP_API_ROUTES.market}?source=eastmoney&${params.toString()}`)
-      if (!r.ok) return null
-      const json = await r.json() as { data?: { f43?: number; f169?: number; f170?: number; f58?: string } }
-      const d = json.data
+  try {
+    const params = new URLSearchParams({
+      source: 'eastmoney',
+      mode: 'quotes',
+      secids: INDEX_LIST.map(idx => idx.secid).join(','),
+      fields: 'f43,f169,f170,f58',
+    })
+    const r = await fetch(`${APP_API_ROUTES.market}?${params.toString()}`)
+    if (!r.ok) return []
+    const json = await r.json() as {
+      data?: Array<{
+        secid?: string
+        data?: { f43?: number; f169?: number; f170?: number; f58?: string } | null
+      }>
+    }
+    const bySecid = new Map((json.data || []).map(item => [item.secid, item.data]))
+
+    return INDEX_LIST.map((idx) => {
+      const d = bySecid.get(idx.secid)
       if (!d || d.f43 == null) return null
 
       // A 股指数返回"分"需 /100，海外指数返回实际价格
@@ -56,11 +64,8 @@ export async function fetchIndices(): Promise<MarketIndex[]> {
         region: idx.region,
         icon: idx.icon,
       }
-    } catch {
-      return null
-    }
-  })
-
-  const results = await Promise.all(tasks)
-  return results.filter((r): r is MarketIndex => r !== null)
+    }).filter((r): r is MarketIndex => r !== null)
+  } catch {
+    return []
+  }
 }
