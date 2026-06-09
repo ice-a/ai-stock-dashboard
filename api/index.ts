@@ -1,3 +1,21 @@
+import { chatServer, listServerModels, streamServerChat } from '../src/server/aiService'
+import {
+  buildExpiredUserSessionCookie,
+  buildUserSessionCookie,
+  createUserSessionToken,
+  getUserConfig,
+  getUserFromCookie,
+  isUserAuthEnabled,
+  loginOrRegisterUser,
+  saveUserConfig,
+} from '../src/server/userAuth'
+import {
+  getLongbridgeCandlesticks,
+  getLongbridgeQuotes,
+  getLongbridgeStatusChecked,
+} from '../src/server/longbridgeService'
+import marketHandler from '../src/server/marketApi'
+
 interface ApiRequest {
   method?: string
   headers: Record<string, string | string[] | undefined>
@@ -303,6 +321,75 @@ function pathFromRequest(req: ApiRequest): string {
   return url.pathname.replace(/^\/api\/?/, '').replace(/^\/+/, '')
 }
 
+function decodeBase64Url(value: string): string {
+  let normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  while (normalized.length % 4) normalized += '='
+  return Buffer.from(normalized, 'base64').toString('utf8')
+}
+
+function isAllowedAiProxyBase(url: URL): boolean {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
+  const host = url.hostname.toLowerCase()
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) return false
+  return true
+}
+
+async function handleAiProxy(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
+  if (!path.startsWith('ai-proxy/')) return false
+  const rest = path.slice('ai-proxy/'.length)
+  const [targetB64 = '', ...targetPathParts] = rest.split('/')
+  if (!targetB64) {
+    sendJson(res, 400, { error: 'Missing target' })
+    return true
+  }
+
+  let targetBase: URL
+  try {
+    targetBase = new URL(decodeBase64Url(targetB64))
+  } catch {
+    sendJson(res, 400, { error: 'Invalid target' })
+    return true
+  }
+  if (!isAllowedAiProxyBase(targetBase)) {
+    sendJson(res, 400, { error: 'Invalid target URL' })
+    return true
+  }
+
+  const targetUrl = new URL(targetBase.toString())
+  const cleanPath = targetPathParts.map(encodeURIComponent).join('/')
+  if (cleanPath) targetUrl.pathname = `${targetUrl.pathname.replace(/\/+$/, '')}/${cleanPath}`
+
+  const originalUrl = new URL(req.url || '/api/ai-proxy', 'http://localhost')
+  originalUrl.searchParams.forEach((value, key) => {
+    if (key !== 'path') targetUrl.searchParams.append(key, value)
+  })
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': readHeader(req, 'content-type') || 'application/json',
+      Accept: readHeader(req, 'accept') || 'application/json,text/plain,*/*',
+    }
+    const authorization = readHeader(req, 'authorization')
+    if (authorization) headers.Authorization = authorization
+    const rawBody = req.method && req.method !== 'GET' && req.method !== 'HEAD' ? await readRawBody(req) : ''
+    const upstream = await fetch(targetUrl, {
+      method: req.method || 'GET',
+      headers,
+      body: rawBody || undefined,
+    })
+    const contentType = upstream.headers.get('content-type') || 'application/json'
+    const text = await upstream.text()
+    res.writeHead(upstream.status, {
+      'Content-Type': contentType,
+      'Cache-Control': 'no-store',
+    })
+    res.end(text)
+  } catch (e) {
+    sendJson(res, statusFromError(e, 502), { error: messageFromError(e) })
+  }
+  return true
+}
+
 async function handleAuth(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
   if (path === 'auth/status') {
     const enabled = isAuthEnabled()
@@ -357,32 +444,28 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
   if (!path.startsWith('account/')) return false
 
   try {
-    const account = await import('../src/server/userAuth')
-    const auth = await import('../src/server/auth')
-    const rateLimit = await import('../src/server/rateLimit')
-
     if (path === 'account/status') {
-      const enabled = account.isUserAuthEnabled()
-      const user = enabled ? await account.getUserFromCookie(readHeader(req, 'cookie')) : null
+      const enabled = isUserAuthEnabled()
+      const user = enabled ? await getUserFromCookie(readHeader(req, 'cookie')) : null
       sendJson(res, 200, { enabled, authenticated: Boolean(user), user })
       return true
     }
 
     if (path === 'account/logout') {
-      res.setHeader('Set-Cookie', account.buildExpiredUserSessionCookie(auth.isSecureRequest(req.headers)))
+      res.setHeader('Set-Cookie', buildExpiredUserSessionCookie(isSecureRequest(req.headers)))
       sendJson(res, 200, { ok: true })
       return true
     }
 
     if (path === 'account/login' || path === 'account/register') {
       if (!methodAllowed(req, res, 'POST')) return true
-      if (!account.isUserAuthEnabled()) {
+      if (!isUserAuthEnabled()) {
         sendJson(res, 503, { error: 'MongoDB account storage is not configured.' })
         return true
       }
       const key = path === 'account/register' ? 'account-register' : 'account'
-      const ip = rateLimit.getRequestIp(req.headers)
-      const attempt = rateLimit.checkLoginAttempt(`${key}:${ip}`)
+      const ip = getRequestIp(req.headers)
+      const attempt = checkLoginAttempt(`${key}:${ip}`)
       if (!attempt.ok) {
         res.setHeader('Retry-After', String(attempt.retryAfter))
         sendJson(res, 429, { error: 'Too many attempts' })
@@ -390,31 +473,31 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
       }
 
       const body = await readJsonBody<{ user: string; sign?: string; seckey?: string }>(req)
-      const result = await account.loginOrRegisterUser(String(body.user || ''), String(body.sign || body.seckey || ''))
+      const result = await loginOrRegisterUser(String(body.user || ''), String(body.sign || body.seckey || ''))
       if (!result) {
         await new Promise(resolve => setTimeout(resolve, 350))
         sendJson(res, 401, { error: 'Invalid user or sign' })
         return true
       }
-      rateLimit.clearLoginAttempts(`${key}:${ip}`)
-      const token = await account.createUserSessionToken(result.doc.user)
-      res.setHeader('Set-Cookie', account.buildUserSessionCookie(token, auth.isSecureRequest(req.headers)))
+      clearLoginAttempts(`${key}:${ip}`)
+      const token = await createUserSessionToken(result.doc.user)
+      res.setHeader('Set-Cookie', buildUserSessionCookie(token, isSecureRequest(req.headers)))
       sendJson(res, 200, { ok: true, user: result.doc.user, created: result.created })
       return true
     }
 
     if (path === 'account/config') {
-      if (!account.isUserAuthEnabled()) {
+      if (!isUserAuthEnabled()) {
         sendJson(res, 503, { error: 'MongoDB account storage is not configured.' })
         return true
       }
-      const user = await account.getUserFromCookie(readHeader(req, 'cookie'))
+      const user = await getUserFromCookie(readHeader(req, 'cookie'))
       if (!user) {
         sendJson(res, 401, { error: 'Unauthorized' })
         return true
       }
       if (!req.method || req.method === 'GET') {
-        const { config, updatedAt } = await account.getUserConfig(user)
+        const { config, updatedAt } = await getUserConfig(user)
         sendJson(res, 200, { ok: true, user, config, updatedAt: updatedAt?.toISOString() || null })
         return true
       }
@@ -424,7 +507,7 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
           sendJson(res, 400, { error: 'Missing config' })
           return true
         }
-        const updatedAt = await account.saveUserConfig(user, body.config)
+        const updatedAt = await saveUserConfig(user, body.config)
         sendJson(res, 200, { ok: true, user, updatedAt: updatedAt.toISOString() })
         return true
       }
@@ -442,7 +525,6 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
 async function handleAi(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
   if (path === 'ai/models') {
     try {
-      const { listServerModels } = await import('../src/server/aiService')
       sendJson(res, 200, { data: await listServerModels() })
     } catch (e) {
       sendJson(res, statusFromError(e, 502), { error: messageFromError(e) })
@@ -458,7 +540,6 @@ async function handleAi(path: string, req: ApiRequest, res: ApiResponse): Promis
       return true
     }
     try {
-      const { chatServer } = await import('../src/server/aiService')
       sendJson(res, 200, await chatServer(body.messages, body))
     } catch (e) {
       sendJson(res, statusFromError(e, 502), { error: messageFromError(e) })
@@ -477,7 +558,6 @@ async function handleAi(path: string, req: ApiRequest, res: ApiResponse): Promis
       return true
     }
     try {
-      const { streamServerChat } = await import('../src/server/aiService')
       const upstream = await streamServerChat(body.messages, body)
       res.writeHead(200, {
         'Content-Type': upstream.headers.get('content-type') || 'text/event-stream; charset=utf-8',
@@ -507,9 +587,8 @@ async function handleAi(path: string, req: ApiRequest, res: ApiResponse): Promis
 async function handleLongbridge(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
   if (!path.startsWith('longbridge/')) return false
   try {
-    const service = await import('../src/server/longbridgeService')
     if (path === 'longbridge/status') {
-      sendJson(res, 200, await service.getLongbridgeStatusChecked())
+      sendJson(res, 200, await getLongbridgeStatusChecked())
       return true
     }
     if (path === 'longbridge/quotes') {
@@ -520,7 +599,7 @@ async function handleLongbridge(path: string, req: ApiRequest, res: ApiResponse)
         sendJson(res, 400, { error: 'Missing symbols' })
         return true
       }
-      sendJson(res, 200, { data: await service.getLongbridgeQuotes(symbols) })
+      sendJson(res, 200, { data: await getLongbridgeQuotes(symbols) })
       return true
     }
     if (path === 'longbridge/candlesticks') {
@@ -531,7 +610,7 @@ async function handleLongbridge(path: string, req: ApiRequest, res: ApiResponse)
         return true
       }
       sendJson(res, 200, {
-        data: await service.getLongbridgeCandlesticks(
+        data: await getLongbridgeCandlesticks(
           symbol,
           String(req.query?.period || 'day'),
           Number(req.query?.count) || 200,
@@ -621,11 +700,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     if (path === 'market') {
-      const market = await import('../src/server/marketApi')
-      await market.default(req, res)
+      await marketHandler(req, res)
       return
     }
 
+    if (await handleAiProxy(path, req, res)) return
     if (await handleAuth(path, req, res)) return
     if (await handleAccount(path, req, res)) return
     if (await handleAi(path, req, res)) return

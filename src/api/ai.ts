@@ -61,7 +61,6 @@ async function throwApiError(prefix: string, response: Response): Promise<never>
 // 开发环境通过 Vite 代理解决 CORS 问题
 // 将目标 URL 编码为 base64 作为代理路径
 function getProxiedUrl(targetUrl: string): string {
-  if (!import.meta.env.DEV) return targetUrl
   try {
     const url = new URL(targetUrl)
     const base = url.origin
@@ -116,7 +115,7 @@ export async function listModels(baseUrl: string, apiKey: string, signal?: Abort
 
   const base = normalizeOpenAIBaseUrl(baseUrl)
   const modelsUrl = `${base}/models`
-  const url = import.meta.env.DEV ? getProxiedUrl(modelsUrl) : modelsUrl
+  const url = getProxiedUrl(modelsUrl)
   const r = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -155,7 +154,7 @@ export async function chat(
 
   const base = normalizeOpenAIBaseUrl(options.baseUrl)
   const chatUrl = `${base}/chat/completions`
-  const url = import.meta.env.DEV ? getProxiedUrl(chatUrl) : chatUrl
+  const url = getProxiedUrl(chatUrl)
   const r = await fetch(url, {
     method: 'POST',
     headers: {
@@ -205,7 +204,7 @@ export async function* chatStream(
 
   const base = normalizeOpenAIBaseUrl(rest.baseUrl)
   const chatUrl = `${base}/chat/completions`
-  const url = import.meta.env.DEV ? getProxiedUrl(chatUrl) : chatUrl
+  const url = getProxiedUrl(chatUrl)
   const r = await fetch(url, {
     method: 'POST',
     headers: {
