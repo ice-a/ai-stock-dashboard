@@ -1,21 +1,3 @@
-import { chatServer, listServerModels, streamServerChat } from '../src/server/aiService'
-import {
-  buildExpiredUserSessionCookie,
-  buildUserSessionCookie,
-  createUserSessionToken,
-  getUserConfig,
-  getUserFromCookie,
-  isUserAuthEnabled,
-  loginOrRegisterUser,
-  saveUserConfig,
-} from '../src/server/userAuth'
-import {
-  getLongbridgeCandlesticks,
-  getLongbridgeQuotes,
-  getLongbridgeStatusChecked,
-} from '../src/server/longbridgeService'
-import marketHandler from '../src/server/marketApi'
-
 interface ApiRequest {
   method?: string
   headers: Record<string, string | string[] | undefined>
@@ -51,7 +33,21 @@ interface AttemptState {
 }
 
 const AUTH_COOKIE_DEFAULT = 'ai_dashboard_auth'
+const USER_AUTH_COOKIE_DEFAULT = 'ai_dashboard_user'
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const EASTMONEY_QUOTE_BASES = [
+  'https://push2delay.eastmoney.com/api/qt/stock/get',
+  'https://push2.eastmoney.com/api/qt/stock/get',
+]
+const EASTMONEY_KLINE_BASES = ['https://push2his.eastmoney.com/api/qt/stock/kline/get']
+const EASTMONEY_SEARCH_URL = 'https://searchapi.eastmoney.com/api/suggest/get'
+const EASTMONEY_NOTICE_URL = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
+const EASTMONEY_NEWS_URL = 'https://search-api-web.eastmoney.com/search/jsonp'
+const EASTMONEY_QUOTE_REFERER = 'https://quote.eastmoney.com/'
+const EASTMONEY_DATA_REFERER = 'https://data.eastmoney.com/'
+const EASTMONEY_SEARCH_REFERER = 'https://so.eastmoney.com/'
+const SINA_QUOTE_BASE_URL = 'https://hq.sinajs.cn'
+const SINA_FINANCE_REFERER = 'https://finance.sina.com.cn'
 const loginAttempts = new Map<string, AttemptState>()
 let cryptoModulePromise: Promise<typeof import('node:crypto')> | null = null
 
@@ -103,6 +99,26 @@ function readAiConfig() {
     temperature: readNumberEnv('AI_TEMPERATURE', 0.7),
     maxTokens: readNumberEnv('AI_MAX_TOKENS', 2000),
   }
+}
+
+function readMongoUri(): string {
+  return readEnv('MONGODB_URI')
+}
+
+function readUserAuthCookieName(): string {
+  return readEnv('USER_AUTH_COOKIE_NAME') || USER_AUTH_COOKIE_DEFAULT
+}
+
+function readUserAuthSecret(): string {
+  return readEnv('USER_AUTH_SECRET') || readAuthSecret() || readMongoUri()
+}
+
+function normalizeOpenAIBaseUrl(baseUrl: string): string {
+  const url = baseUrl.trim().replace(/\/+$/, '')
+  if (url.includes('/chat/completions')) return url.replace(/\/chat\/completions.*$/i, '')
+  if (/\/v\d+\/?$/.test(url)) return url
+  if (/\/api\//.test(url)) return url
+  return `${url}/v1`
 }
 
 function getRuntimeConfig() {
@@ -185,6 +201,10 @@ function getAuthTokenFromCookie(header: string | null | undefined): string | nul
   return parseCookie(header)[readAuthCookieName()] || null
 }
 
+function getUserTokenFromCookie(header: string | null | undefined): string | null {
+  return parseCookie(header)[readUserAuthCookieName()] || null
+}
+
 async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
   if (!isAuthEnabled()) return true
   if (!token) return false
@@ -196,6 +216,25 @@ async function verifySessionToken(token: string | null | undefined): Promise<boo
   if (!nonce || nonce.length < 16) return false
   const expected = await hmacHex(readAuthSecret(), `${expiresRaw}.${nonce}`)
   return constantTimeEqual(signature, expected)
+}
+
+async function verifyUserSessionToken(token: string | null | undefined): Promise<string | null> {
+  if (!readMongoUri()) return null
+  if (!token) return null
+  const secret = readUserAuthSecret()
+  if (!secret) return null
+  const parts = token.split('.')
+  if (parts.length !== 2) return null
+  const [payload, signature] = parts
+  const expected = await hmacHex(secret, payload)
+  if (!constantTimeEqual(signature, expected)) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { user?: string; exp?: number }
+    if (!parsed.user || !parsed.exp || parsed.exp < Date.now()) return null
+    return parsed.user.trim().toLowerCase()
+  } catch {
+    return null
+  }
 }
 
 function buildSessionCookie(token: string, secure: boolean): string {
@@ -213,6 +252,18 @@ function buildSessionCookie(token: string, secure: boolean): string {
 function buildExpiredSessionCookie(secure: boolean): string {
   const parts = [
     `${readAuthCookieName()}=`,
+    'Path=/',
+    'Max-Age=0',
+    'HttpOnly',
+    'SameSite=Lax',
+  ]
+  if (secure) parts.push('Secure')
+  return parts.join('; ')
+}
+
+function buildExpiredUserSessionCookie(secure: boolean): string {
+  const parts = [
+    `${readUserAuthCookieName()}=`,
     'Path=/',
     'Max-Age=0',
     'HttpOnly',
@@ -445,8 +496,8 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
 
   try {
     if (path === 'account/status') {
-      const enabled = isUserAuthEnabled()
-      const user = enabled ? await getUserFromCookie(readHeader(req, 'cookie')) : null
+      const enabled = Boolean(readMongoUri())
+      const user = enabled ? await verifyUserSessionToken(getUserTokenFromCookie(readHeader(req, 'cookie'))) : null
       sendJson(res, 200, { enabled, authenticated: Boolean(user), user })
       return true
     }
@@ -459,59 +510,12 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
 
     if (path === 'account/login' || path === 'account/register') {
       if (!methodAllowed(req, res, 'POST')) return true
-      if (!isUserAuthEnabled()) {
-        sendJson(res, 503, { error: 'MongoDB account storage is not configured.' })
-        return true
-      }
-      const key = path === 'account/register' ? 'account-register' : 'account'
-      const ip = getRequestIp(req.headers)
-      const attempt = checkLoginAttempt(`${key}:${ip}`)
-      if (!attempt.ok) {
-        res.setHeader('Retry-After', String(attempt.retryAfter))
-        sendJson(res, 429, { error: 'Too many attempts' })
-        return true
-      }
-
-      const body = await readJsonBody<{ user: string; sign?: string; seckey?: string }>(req)
-      const result = await loginOrRegisterUser(String(body.user || ''), String(body.sign || body.seckey || ''))
-      if (!result) {
-        await new Promise(resolve => setTimeout(resolve, 350))
-        sendJson(res, 401, { error: 'Invalid user or sign' })
-        return true
-      }
-      clearLoginAttempts(`${key}:${ip}`)
-      const token = await createUserSessionToken(result.doc.user)
-      res.setHeader('Set-Cookie', buildUserSessionCookie(token, isSecureRequest(req.headers)))
-      sendJson(res, 200, { ok: true, user: result.doc.user, created: result.created })
+      sendJson(res, 503, { error: 'MongoDB account storage is temporarily disabled on this deployment.' })
       return true
     }
 
     if (path === 'account/config') {
-      if (!isUserAuthEnabled()) {
-        sendJson(res, 503, { error: 'MongoDB account storage is not configured.' })
-        return true
-      }
-      const user = await getUserFromCookie(readHeader(req, 'cookie'))
-      if (!user) {
-        sendJson(res, 401, { error: 'Unauthorized' })
-        return true
-      }
-      if (!req.method || req.method === 'GET') {
-        const { config, updatedAt } = await getUserConfig(user)
-        sendJson(res, 200, { ok: true, user, config, updatedAt: updatedAt?.toISOString() || null })
-        return true
-      }
-      if (req.method === 'PUT' || req.method === 'POST') {
-        const body = await readJsonBody<{ config: Record<string, unknown> }>(req)
-        if (!body.config || typeof body.config !== 'object' || Array.isArray(body.config)) {
-          sendJson(res, 400, { error: 'Missing config' })
-          return true
-        }
-        const updatedAt = await saveUserConfig(user, body.config)
-        sendJson(res, 200, { ok: true, user, updatedAt: updatedAt.toISOString() })
-        return true
-      }
-      sendJson(res, 405, { error: 'Method not allowed' })
+      sendJson(res, 503, { error: 'MongoDB account storage is temporarily disabled on this deployment.' })
       return true
     }
   } catch (e) {
@@ -520,6 +524,74 @@ async function handleAccount(path: string, req: ApiRequest, res: ApiResponse): P
   }
 
   return false
+}
+
+async function throwUpstreamError(prefix: string, response: Response): Promise<never> {
+  const text = await response.text()
+  throw Object.assign(new Error(`${prefix} ${response.status}: ${text.substring(0, 200)}`), { statusCode: response.status })
+}
+
+function getServerAiConfig() {
+  const config = readAiConfig()
+  if (!config.apiKey) throw Object.assign(new Error('AI_API_KEY or OPENAI_API_KEY is not configured.'), { statusCode: 503 })
+  return config
+}
+
+async function listServerModels(): Promise<unknown[]> {
+  const config = getServerAiConfig()
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/models`, {
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  if (!r.ok) await throwUpstreamError('Models', r)
+  const json = await r.json() as { data?: unknown[]; model?: unknown }
+  return json.data || (json.model ? [json.model] : [])
+}
+
+async function chatServer(messages: ChatMessage[], options: ChatBody = {}): Promise<unknown> {
+  const config = getServerAiConfig()
+  const model = options.model || config.model
+  if (!model) throw Object.assign(new Error('AI_MODEL or OPENAI_MODEL is not configured.'), { statusCode: 503 })
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: options.temperature ?? config.temperature,
+      max_tokens: options.maxTokens ?? config.maxTokens,
+      stream: false,
+    }),
+  })
+  if (!r.ok) await throwUpstreamError('Chat', r)
+  return r.json()
+}
+
+async function streamServerChat(messages: ChatMessage[], options: ChatBody = {}): Promise<Response> {
+  const config = getServerAiConfig()
+  const model = options.model || config.model
+  if (!model) throw Object.assign(new Error('AI_MODEL or OPENAI_MODEL is not configured.'), { statusCode: 503 })
+  const r = await fetch(`${normalizeOpenAIBaseUrl(config.baseUrl)}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: options.temperature ?? config.temperature,
+      max_tokens: options.maxTokens ?? config.maxTokens,
+      stream: true,
+    }),
+  })
+  if (!r.ok) await throwUpstreamError('Chat', r)
+  return r
 }
 
 async function handleAi(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
@@ -588,34 +660,30 @@ async function handleLongbridge(path: string, req: ApiRequest, res: ApiResponse)
   if (!path.startsWith('longbridge/')) return false
   try {
     if (path === 'longbridge/status') {
-      sendJson(res, 200, await getLongbridgeStatusChecked())
+      const appKey = readEnv('LONGPORT_APP_KEY') || readEnv('LONGBRIDGE_APP_KEY')
+      const appSecret = readEnv('LONGPORT_APP_SECRET') || readEnv('LONGBRIDGE_APP_SECRET')
+      const accessToken = readEnv('LONGPORT_ACCESS_TOKEN') || readEnv('LONGBRIDGE_ACCESS_TOKEN')
+      const region = (readEnv('LONGPORT_REGION') || readEnv('LONGBRIDGE_REGION') || 'global').toLowerCase()
+      const missing: string[] = []
+      if (!appKey) missing.push('LONGPORT_APP_KEY')
+      if (!accessToken) missing.push('LONGPORT_ACCESS_TOKEN')
+      if (!appSecret && !accessToken.startsWith('Bearer ')) missing.push('LONGPORT_APP_SECRET')
+      sendJson(res, 200, {
+        configured: missing.length === 0,
+        region,
+        host: region === 'cn' ? 'https://openapi.longportapp.cn' : 'https://openapi.longportapp.com',
+        quoteHost: region === 'cn' ? 'wss://openapi-quote.longportapp.cn' : 'wss://openapi-quote.longportapp.com',
+        sdkLoaded: false,
+        disabledReason: missing.length ? `LongPort credentials are not configured: ${missing.join(', ')}.` : '',
+      })
       return true
     }
     if (path === 'longbridge/quotes') {
-      if (!methodAllowed(req, res, 'GET')) return true
-      const rawSymbols = req.query?.symbols || req.query?.symbol || ''
-      const symbols = (Array.isArray(rawSymbols) ? rawSymbols[0] || '' : rawSymbols).split(',').map(s => s.trim()).filter(Boolean)
-      if (!symbols.length) {
-        sendJson(res, 400, { error: 'Missing symbols' })
-        return true
-      }
-      sendJson(res, 200, { data: await getLongbridgeQuotes(symbols) })
+      sendJson(res, 503, { error: 'Longbridge quote service is disabled on this deployment.' })
       return true
     }
     if (path === 'longbridge/candlesticks') {
-      if (!methodAllowed(req, res, 'GET')) return true
-      const symbol = String(req.query?.symbol || '').trim()
-      if (!symbol) {
-        sendJson(res, 400, { error: 'Missing symbol' })
-        return true
-      }
-      sendJson(res, 200, {
-        data: await getLongbridgeCandlesticks(
-          symbol,
-          String(req.query?.period || 'day'),
-          Number(req.query?.count) || 200,
-        ),
-      })
+      sendJson(res, 503, { error: 'Longbridge candlestick service is disabled on this deployment.' })
       return true
     }
   } catch (e) {
@@ -623,6 +691,165 @@ async function handleLongbridge(path: string, req: ApiRequest, res: ApiResponse)
     return true
   }
   return false
+}
+
+function readQueryString(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] || '' : value || ''
+}
+
+async function fetchText(url: string, headers: Record<string, string>): Promise<string> {
+  const r = await fetch(url, { headers })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.text()
+}
+
+async function fetchFirstJson(urls: string[]): Promise<unknown> {
+  const errors: string[] = []
+  for (const url of urls) {
+    try {
+      const text = await fetchText(url, {
+        Referer: EASTMONEY_QUOTE_REFERER,
+        'User-Agent': 'Mozilla/5.0',
+        Accept: 'application/json,text/plain,*/*',
+      })
+      const jsonText = text.trim().replace(/^[^(]+\(/, '').replace(/\);?$/, '')
+      return JSON.parse(jsonText)
+    } catch (e) {
+      errors.push(messageFromError(e))
+    }
+  }
+  throw Object.assign(new Error(errors.join('; ') || 'EastMoney request failed'), { statusCode: 502 })
+}
+
+async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
+  if (path !== 'market') return false
+  if (!methodAllowed(req, res, 'GET')) return true
+  const source = readQueryString(req.query?.source)
+  try {
+    if (source === 'eastmoney') {
+      const mode = readQueryString(req.query?.mode)
+      if (mode === 'quote') {
+        const secid = readQueryString(req.query?.secid)
+        const fields = readQueryString(req.query?.fields)
+        if (!secid || !fields) {
+          sendJson(res, 400, { error: 'Missing secid or fields' })
+          return true
+        }
+        const query = `secid=${encodeURIComponent(secid)}&fields=${encodeURIComponent(fields)}`
+        sendJson(res, 200, await fetchFirstJson(EASTMONEY_QUOTE_BASES.map(base => `${base}?${query}`)))
+        return true
+      }
+
+      if (mode === 'kline') {
+        const secid = readQueryString(req.query?.secid)
+        if (!secid) {
+          sendJson(res, 400, { error: 'Missing secid' })
+          return true
+        }
+        const params = new URLSearchParams({
+          secid,
+          fields1: readQueryString(req.query?.fields1) || 'f1,f2,f3,f4,f5,f6',
+          fields2: readQueryString(req.query?.fields2) || 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+          klt: readQueryString(req.query?.klt) || '101',
+          fqt: readQueryString(req.query?.fqt) || '1',
+          beg: readQueryString(req.query?.beg) || '0',
+          end: readQueryString(req.query?.end) || '20500101',
+          lmt: readQueryString(req.query?.lmt) || '200',
+        })
+        sendJson(res, 200, await fetchFirstJson(EASTMONEY_KLINE_BASES.map(base => `${base}?${params.toString()}`)))
+        return true
+      }
+
+      if (mode === 'search') {
+        const input = readQueryString(req.query?.input).trim()
+        if (!input) {
+          sendJson(res, 200, {})
+          return true
+        }
+        const params = new URLSearchParams({
+          input,
+          type: readQueryString(req.query?.type) || '14',
+          token: readQueryString(req.query?.token) || 'D43BF722C8E33BDC906FB84D85E326E8',
+          count: readQueryString(req.query?.count) || '10',
+        })
+        const text = await fetchText(`${EASTMONEY_SEARCH_URL}?${params.toString()}`, {
+          Referer: EASTMONEY_QUOTE_REFERER,
+          'User-Agent': 'Mozilla/5.0',
+          Accept: 'application/json,text/plain,*/*',
+        })
+        sendJson(res, 200, JSON.parse(text))
+        return true
+      }
+
+      if (mode === 'announcements') {
+        const stockList = readQueryString(req.query?.stock_list)
+        if (!stockList) {
+          sendJson(res, 400, { error: 'Missing stock_list' })
+          return true
+        }
+        const params = new URLSearchParams({
+          page_size: readQueryString(req.query?.page_size) || '10',
+          page_index: readQueryString(req.query?.page_index) || '1',
+          ann_type: readQueryString(req.query?.ann_type) || 'SHA,SZA',
+          stock_list: stockList,
+        })
+        const text = await fetchText(`${EASTMONEY_NOTICE_URL}?${params.toString()}`, {
+          Referer: EASTMONEY_DATA_REFERER,
+          'User-Agent': 'Mozilla/5.0',
+          Accept: 'application/json,text/plain,*/*',
+        })
+        sendJson(res, 200, JSON.parse(text))
+        return true
+      }
+
+      if (mode === 'news') {
+        const param = readQueryString(req.query?.param)
+        if (!param) {
+          sendJson(res, 400, { error: 'Missing param' })
+          return true
+        }
+        const cb = readQueryString(req.query?.cb) || `cb_${Date.now()}`
+        const params = new URLSearchParams({ cb, param })
+        const text = await fetchText(`${EASTMONEY_NEWS_URL}?${params.toString()}`, {
+          Referer: EASTMONEY_SEARCH_REFERER,
+          'User-Agent': 'Mozilla/5.0',
+          Accept: 'application/javascript,text/plain,*/*',
+        })
+        const jsonStart = text.indexOf('(')
+        const jsonEnd = text.lastIndexOf(')')
+        if (jsonStart < 0 || jsonEnd < 0) throw new Error('Invalid EastMoney news response')
+        sendJson(res, 200, JSON.parse(text.slice(jsonStart + 1, jsonEnd)))
+        return true
+      }
+      sendJson(res, 400, { error: 'Invalid mode' })
+      return true
+    }
+
+    if (source === 'sina') {
+      const symbols = readQueryString(req.query?.symbols).split(',').map(s => s.trim()).filter(Boolean)
+      if (!symbols.length) {
+        sendJson(res, 400, { error: 'Missing symbols' })
+        return true
+      }
+      const url = `${SINA_QUOTE_BASE_URL}/list=${symbols.map(encodeURIComponent).join(',')}`
+      const upstream = await fetch(url, {
+        headers: {
+          Referer: SINA_FINANCE_REFERER,
+          'User-Agent': 'Mozilla/5.0',
+          Accept: '*/*',
+        },
+      })
+      if (!upstream.ok) throw new Error(`Sina ${upstream.status}`)
+      const bytes = Buffer.from(await upstream.arrayBuffer())
+      sendJson(res, 200, { text: new TextDecoder('gb18030').decode(bytes) })
+      return true
+    }
+
+    sendJson(res, 404, { error: 'Unknown market source' })
+  } catch (e) {
+    sendJson(res, statusFromError(e, 502), { error: messageFromError(e) })
+  }
+  return true
 }
 
 function normalizeBarkServerUrl(value: unknown): string {
@@ -699,12 +926,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return
     }
 
-    if (path === 'market') {
-      await marketHandler(req, res)
-      return
-    }
-
     if (await handleAiProxy(path, req, res)) return
+    if (await handleMarket(path, req, res)) return
     if (await handleAuth(path, req, res)) return
     if (await handleAccount(path, req, res)) return
     if (await handleAi(path, req, res)) return
