@@ -158,7 +158,7 @@ MongoDB 账户：
 | --- | --- | --- |
 | Vite 环境变量 | [Env Variables and Modes](https://vite.dev/guide/env-and-mode) | 服务端密钥不使用 `VITE_` 前缀，避免打包进浏览器 |
 | Vercel 环境变量 | [Environment Variables](https://vercel.com/docs/environment-variables) | 生产环境在 Project Settings 配置 `SITE_PASSWORD`，以及可选 `MONGODB_URI` / `AI_*` / `LONGPORT_*` |
-| Vercel Node.js Functions | [Node.js Runtime](https://vercel.com/docs/functions/runtimes/node-js) | `api/[...path].ts` 单一 catch-all 函数分发服务端 API，避免 Hobby 计划函数数量限制 |
+| Vercel Node.js Functions | [Node.js Runtime](https://vercel.com/docs/functions/runtimes/node-js) | `api/index.ts` 单一函数分发服务端 API，避免 Hobby 计划函数数量限制 |
 | Vercel 项目配置 | [Project Configuration](https://vercel.com/docs/project-configuration) | `vercel.json` 负责 SPA rewrite 和静态资源缓存 |
 | OpenAI Chat Completions | [Create chat completion](https://platform.openai.com/docs/api-reference/chat/create) | `src/server/aiService.ts` 请求 `/chat/completions` |
 | OpenAI Models | [List models](https://platform.openai.com/docs/api-reference/models/list) | 设置页模型列表请求 `/models` |
@@ -172,7 +172,7 @@ MongoDB 账户：
 4. 在 Environment Variables 中配置 `SITE_PASSWORD`，以及可选 `MONGODB_URI` / `USER_AUTH_SECRET` / `AI_API_KEY` / `AI_MODEL`。长桥变量只在需要备用长桥行情时配置。
 5. 部署后访问站点，会先进入 `/login`。
 
-项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。默认行情链路会优先请求东方财富，失败后自动降级到 Sina、长桥和静态快照。所有 `/api/*` 路由由 `api/[...path].ts` 统一分发，`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK。
+项目已在 `package.json` 中指定 Node 22，Vercel 使用默认 npm 安装流程。默认行情链路会优先请求东方财富，失败后自动降级到 Sina、长桥和静态快照。所有 `/api/*` 路由由 `api/index.ts` 统一分发，`/api/longbridge/*` 使用纯 JS 协议客户端，不打包 Longbridge 官方 Node SDK。
 
 ## 项目结构
 

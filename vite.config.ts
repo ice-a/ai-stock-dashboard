@@ -101,7 +101,7 @@ function unifiedDevApiPlugin(): Plugin {
         }
 
         try {
-          const mod = await import('./api/[...path].ts')
+          const mod = await import('./api/index.ts')
           const query: Record<string, string | string[]> = {}
           url.searchParams.forEach((value, key) => {
             if (query[key]) query[key] = Array.isArray(query[key]) ? [...query[key] as string[], value] : [query[key] as string, value]
