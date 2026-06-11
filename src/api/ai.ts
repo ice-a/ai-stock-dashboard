@@ -238,7 +238,22 @@ async function* readSseStream(r: Response): AsyncGenerator<string, void, void> {
   let buf = ''
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
+    if (done) {
+      if (buf.trim()) {
+        const trimmed = buf.trim()
+        if (trimmed.startsWith('data:')) {
+          const payload = trimmed.slice(5).trim()
+          if (payload !== '[DONE]') {
+            try {
+              const obj = JSON.parse(payload)
+              const content = obj.choices?.[0]?.delta?.content
+              if (content) yield content
+            } catch { /* ignore */ }
+          }
+        }
+      }
+      break
+    }
     buf += decoder.decode(value, { stream: true })
     // SSE: 多个 "data: {...}\n\n"
     const lines = buf.split('\n')

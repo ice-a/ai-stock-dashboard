@@ -44,7 +44,12 @@ export const useRuntimeConfigStore = defineStore('runtimeConfig', {
       try {
         const r = await fetch(APP_API_ROUTES.config)
         if (r.ok) {
-          this.config = { ...DEFAULT_CONFIG, ...(await r.json()) }
+          const remote = await r.json()
+          this.config = {
+            auth: { ...DEFAULT_CONFIG.auth, ...(remote.auth || {}) },
+            ai: { ...DEFAULT_CONFIG.ai, ...(remote.ai || {}) },
+            refresh: { ...DEFAULT_CONFIG.refresh, ...(remote.refresh || {}) },
+          }
         }
       } finally {
         this.loaded = true

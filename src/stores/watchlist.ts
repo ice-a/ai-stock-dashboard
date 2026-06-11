@@ -69,14 +69,24 @@ export const useWatchlistStore = defineStore('watchlist', () => {
       if (!parsed || !Array.isArray(parsed.items)) return { added: 0, merged: 0 }
       let added = 0, merged = 0
       const exist = new Set(items.value.map(i => i.symbol))
-      for (const i of parsed.items as FavoriteItem[]) {
-        if (exist.has(i.symbol)) {
+      for (const raw of parsed.items) {
+        if (!raw || typeof raw !== 'object' || !raw.symbol || typeof raw.symbol !== 'string') continue
+        const symbol = raw.symbol.trim().toUpperCase()
+        if (!symbol) continue
+        const item: FavoriteItem = {
+          symbol,
+          group: typeof raw.group === 'string' ? raw.group : 'default',
+          note: typeof raw.note === 'string' ? raw.note : '',
+          targetPrice: typeof raw.targetPrice === 'number' ? raw.targetPrice : null,
+          addedAt: typeof raw.addedAt === 'number' ? raw.addedAt : Date.now(),
+        }
+        if (exist.has(item.symbol)) {
           merged++
           continue
         }
-        items.value.push(i)
+        items.value.push(item)
         added++
-        exist.add(i.symbol)
+        exist.add(item.symbol)
       }
       return { added, merged }
     } catch {

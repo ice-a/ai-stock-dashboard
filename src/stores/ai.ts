@@ -93,7 +93,12 @@ export const useAIStore = defineStore('ai', {
 
   actions: {
     save(partial?: Partial<AIConfig>) {
-      if (partial) Object.assign(this, partial)
+      if (partial) {
+        const stateKeys = ['baseUrl', 'apiKey', 'model', 'availableModels', 'temperature', 'maxTokens', 'lastSync', 'serverManaged'] as const
+        for (const key of stateKeys) {
+          if (key in partial) (this as any)[key] = (partial as any)[key]
+        }
+      }
       this.model = sanitizeModelId(this.model)
       this.availableModels = sanitizeAvailableModels(this.availableModels)
       const json = JSON.stringify({

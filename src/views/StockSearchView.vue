@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchStocks, type SearchResult } from '../api/search'
 import { useQuotesStore } from '../stores/quotes'
@@ -40,6 +40,10 @@ watch(query, (value) => {
     return
   }
   timer = setTimeout(() => performSearch(), 260)
+})
+
+onUnmounted(() => {
+  if (timer) clearTimeout(timer)
 })
 
 onMounted(() => {

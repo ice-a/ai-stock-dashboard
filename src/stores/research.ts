@@ -111,6 +111,7 @@ export const useResearchStore = defineStore('research', () => {
       reports.value = Array.isArray(parsed.reports)
         ? parsed.reports.map(normalizeReport).filter(Boolean) as AIResearchReport[]
         : []
+      if (reports.value.length > 200) reports.value = reports.value.slice(0, 200)
       return true
     } catch {
       return false

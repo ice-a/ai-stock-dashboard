@@ -19,6 +19,7 @@ const navItems = computed(() => [
   { to: '/ask', label: 'AI 问答', icon: 'AI' },
   { to: '/research', label: '研究库', icon: 'RS' },
   { to: '/mystic', label: '玄学选股', icon: 'MX' },
+  { to: '/compare', label: '股票对比', icon: 'CP' },
   { to: '/settings', label: '设置', icon: 'ST' },
 ])
 

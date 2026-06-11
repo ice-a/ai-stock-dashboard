@@ -9,6 +9,7 @@ import { useTopicStore } from './stores/topic'
 import { usePortfolioStore } from './stores/portfolio'
 import { useAlertsStore } from './stores/alerts'
 import { useAutoRefresh } from './composables/useAutoRefresh'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
@@ -42,6 +43,15 @@ const { refreshNow } = useAutoRefresh({
     alertsStore.evaluateAll()
   }
 })
+
+useKeyboardShortcuts([
+  {
+    key: 'r',
+    ctrl: true,
+    description: '刷新行情',
+    action: () => refreshNow(),
+  },
+])
 
 // 切换主题时清缓存重新拉
 watch(() => topicStore.activeId, () => {

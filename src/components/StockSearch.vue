@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchStocks, type SearchResult } from '../api/search'
 
@@ -9,20 +9,31 @@ const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const showDropdown = ref(false)
 let timer: ReturnType<typeof setTimeout> | null = null
+let abortController: AbortController | null = null
 
 watch(query, (val) => {
   if (timer) clearTimeout(timer)
+  if (abortController) abortController.abort()
   if (!val.trim()) {
     results.value = []
     showDropdown.value = false
     return
   }
   timer = setTimeout(async () => {
+    abortController = new AbortController()
     loading.value = true
-    results.value = await searchStocks(val)
-    showDropdown.value = true
-    loading.value = false
+    try {
+      results.value = await searchStocks(val)
+      showDropdown.value = true
+    } finally {
+      loading.value = false
+    }
   }, 300)
+})
+
+onUnmounted(() => {
+  if (timer) clearTimeout(timer)
+  if (abortController) abortController.abort()
 })
 
 function select(item: SearchResult) {

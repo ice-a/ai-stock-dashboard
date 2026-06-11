@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../stores/portfolio'
 import { useQuotesStore } from '../stores/quotes'
@@ -27,6 +27,7 @@ const searchLoading = ref(false)
 const editingId = ref<string | null>(null)
 const formError = ref<string | null>(null)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+let searchAbort: AbortController | null = null
 
 const canSubmit = computed(() => {
   if (!normalizedSymbol.value || !form.value.buyPrice || !form.value.quantity || !form.value.buyDate) return false
@@ -55,11 +56,13 @@ watch(() => form.value.side, () => {
 
 watch(() => form.value.symbol, (value) => {
   if (searchTimer) clearTimeout(searchTimer)
+  if (searchAbort) searchAbort.abort()
   if (!value.trim()) {
     results.value = []
     return
   }
   searchTimer = setTimeout(async () => {
+    searchAbort = new AbortController()
     searchLoading.value = true
     try {
       results.value = await searchStocks(value)
@@ -67,6 +70,11 @@ watch(() => form.value.symbol, (value) => {
       searchLoading.value = false
     }
   }, 260)
+})
+
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (searchAbort) searchAbort.abort()
 })
 
 onMounted(() => {

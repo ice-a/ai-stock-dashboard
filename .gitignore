@@ -32,3 +32,6 @@ public/favicon-32.png
 # config
 .ccg
 .claude
+
+# VSCode extension (built separately)
+vscode-extension/

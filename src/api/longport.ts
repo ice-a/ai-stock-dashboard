@@ -32,6 +32,9 @@ async function readJson<T>(response: Response): Promise<T> {
     const message = json?.error || `${response.status} ${response.statusText}`
     throw new Error(`Longbridge ${message}`)
   }
+  if (json === null || json === undefined) {
+    throw new Error(`Longbridge: empty response (${response.status})`)
+  }
   return json as T
 }
 
@@ -90,11 +93,15 @@ export function loadLongPortCreds(): LongPortCreds | null {
 }
 
 export function saveLongPortCreds(appKey: string, appSecret: string, accessToken: string): void {
-  localStorage.setItem(CREDS_KEY, JSON.stringify({ appKey, appSecret, accessToken }))
+  try {
+    localStorage.setItem(CREDS_KEY, JSON.stringify({ appKey, appSecret, accessToken }))
+  } catch { /* ignore */ }
 }
 
 export function clearLongPortCreds(): void {
-  localStorage.removeItem(CREDS_KEY)
+  try {
+    localStorage.removeItem(CREDS_KEY)
+  } catch { /* ignore */ }
 }
 
 export function hasLongPortCreds(): boolean {

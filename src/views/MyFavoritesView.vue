@@ -165,7 +165,7 @@ function exportCSV() {
 
     <div v-if="displayList.length === 0" class="empty card">
       <p class="muted">{{ t('empty.noFavorites') }}</p>
-      <router-link to="/universe" class="btn primary">前往公司池</router-link>
+      <router-link to="/search" class="btn primary">前往搜索</router-link>
     </div>
 
     <div v-else class="fav-list">

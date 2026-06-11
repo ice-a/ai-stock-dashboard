@@ -6,11 +6,13 @@ import ThemeToggle from './ThemeToggle.vue'
 import LangSwitch from './LangSwitch.vue'
 import RefreshIndicator from './RefreshIndicator.vue'
 import { useAccountStore } from '../stores/account'
+import { useMarketSession } from '../composables/useMarketSession'
 
 const { t } = useI18n()
 const route = useRoute()
 const emit = defineEmits<{ (e: 'refresh'): void }>()
 const account = useAccountStore()
+const { isOpen } = useMarketSession()
 
 const subtitle = computed(() => {
   return t('app.subtitle')
@@ -24,6 +26,14 @@ const accountLabel = computed(() => {
   if (account.authenticated && account.user) return account.user
   if (account.guest) return '游客'
   return account.enabled ? '未登录' : '本地'
+})
+
+const marketStatuses = computed(() => {
+  return [
+    { market: 'cn' as const, label: 'A股', open: isOpen('cn') },
+    { market: 'us' as const, label: '美股', open: isOpen('us') },
+    { market: 'hk' as const, label: '港股', open: isOpen('hk') },
+  ]
 })
 </script>
 
@@ -46,6 +56,17 @@ const accountLabel = computed(() => {
     </div>
 
     <div class="hdr-right">
+      <div class="market-statuses">
+        <span
+          v-for="ms in marketStatuses"
+          :key="ms.market"
+          class="market-dot"
+          :class="{ open: ms.open }"
+          :title="`${ms.label} ${ms.open ? '交易中' : '已休市'}`"
+        >
+          {{ ms.label }}
+        </span>
+      </div>
       <router-link to="/user" class="user-chip" :title="`用户：${accountLabel}`">{{ accountLabel }}</router-link>
       <RefreshIndicator @refresh="emit('refresh')" />
       <LangSwitch />
@@ -133,6 +154,36 @@ const accountLabel = computed(() => {
 .user-chip:hover {
   border-color: var(--color-border-strong);
   text-decoration: none;
+}
+.market-statuses {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.market-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-bg-muted);
+}
+.market-dot::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.market-dot.open {
+  color: var(--color-up);
+  background: color-mix(in srgb, var(--color-up) 10%, transparent);
+}
+.market-dot.open::before {
+  background: var(--color-up);
 }
 
 @media (max-width: 640px) {

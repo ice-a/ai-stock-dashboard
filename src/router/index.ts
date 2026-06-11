@@ -88,6 +88,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '玄学选股' }
   },
   {
+    path: '/compare',
+    name: 'compare',
+    component: () => import('../views/CompareView.vue'),
+    meta: { title: '股票对比' }
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('../views/SettingsView.vue'),
