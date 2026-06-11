@@ -94,6 +94,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '股票对比' }
   },
   {
+    path: '/subscription',
+    name: 'subscription',
+    component: () => import('../views/SubscriptionView.vue'),
+    meta: { title: '订阅管理' }
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('../views/SettingsView.vue'),

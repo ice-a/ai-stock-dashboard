@@ -11,6 +11,7 @@ import { useAIStore } from '../stores/ai'
 import { useNotificationsStore } from '../stores/notifications'
 import { useRuntimeConfigStore } from '../stores/runtimeConfig'
 import { useAccountStore } from '../stores/account'
+import { useSubscriptionStore } from '../stores/subscription'
 import { listModels, type ModelInfo } from '../api/ai'
 import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 import { setLocale, type Locale } from '../i18n'
@@ -27,6 +28,7 @@ const aiStore = useAIStore()
 const notifications = useNotificationsStore()
 const runtimeConfig = useRuntimeConfigStore()
 const accountStore = useAccountStore()
+const subscriptionStore = useSubscriptionStore()
 
 // ============ AI 模型配置 ============
 const modelList = ref<ModelInfo[]>([])
@@ -260,6 +262,22 @@ function onAllFileSelected(e: Event) {
   <div class="page">
     <h1>{{ t('settings.title') }}</h1>
 
+    <section v-if="accountStore.authenticated" class="card section subscription-banner">
+      <div class="sub-info">
+        <span class="sub-label">当前订阅</span>
+        <span class="sub-tier" :class="subscriptionStore.tier">{{ subscriptionStore.currentPlan.name }}</span>
+        <span v-if="subscriptionStore.isPaid && subscriptionStore.daysRemaining != null" class="sub-remaining">
+          剩余 {{ subscriptionStore.daysRemaining }} 天
+        </span>
+        <span v-if="!subscriptionStore.isPaid" class="sub-usage">
+          今日 AI: {{ subscriptionStore.usageLimits.aiRequestsUsed }}/5
+        </span>
+      </div>
+      <router-link to="/subscription" class="btn sm">
+        {{ subscriptionStore.isPaid ? '管理订阅' : '升级 Pro' }}
+      </router-link>
+    </section>
+
     <section class="card section">
       <h2>{{ t('settings.theme') }}</h2>
       <div class="theme-options">
@@ -440,6 +458,32 @@ function onAllFileSelected(e: Event) {
 <style scoped>
 .section { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); }
 .section h2 { font-size: var(--fs-lg); margin: 0; }
+.subscription-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, var(--color-info-bg), var(--color-bg-elevated));
+}
+.sub-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sub-label { font-size: var(--fs-sm); color: var(--color-muted); }
+.sub-tier {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.sub-tier.free { background: var(--color-bg-muted); color: var(--color-muted); }
+.sub-tier.pro { background: var(--color-link-bg); color: var(--color-link); }
+.sub-tier.team { background: var(--color-purple-bg, var(--color-link-bg)); color: var(--color-purple, var(--color-link)); }
+.sub-remaining, .sub-usage {
+  font-size: var(--fs-xs);
+  color: var(--color-muted);
+}
 .theme-options { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .radio-card {
   display: flex; align-items: center; gap: var(--space-2);

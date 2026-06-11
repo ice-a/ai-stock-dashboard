@@ -20,6 +20,7 @@ const navItems = computed(() => [
   { to: '/research', label: '研究库', icon: 'RS' },
   { to: '/mystic', label: '玄学选股', icon: 'MX' },
   { to: '/compare', label: '股票对比', icon: 'CP' },
+  { to: '/subscription', label: '订阅管理', icon: '💎' },
   { to: '/settings', label: '设置', icon: 'ST' },
 ])
 

@@ -8,6 +8,7 @@ import { useAIStore } from './stores/ai'
 import { useSettingsStore } from './stores/settings'
 import { useRefreshStore } from './stores/refresh'
 import { useAccountStore } from './stores/account'
+import { useSubscriptionStore } from './stores/subscription'
 import { loadPersonalConfigFromCloud } from './utils/personalConfig'
 import './styles/main.css'
 
@@ -36,12 +37,14 @@ async function bootstrap() {
   }
 
   const account = useAccountStore(pinia)
+  const subscription = useSubscriptionStore(pinia)
   app.mount('#app')
 
   account.refresh({ timeoutMs: 2500 })
     .then(async () => {
       if (account.enabled && account.authenticated) {
         await loadPersonalConfigFromCloud()
+        subscription.refresh().catch(() => {})
         return
       }
       const current = router.currentRoute.value
