@@ -821,71 +821,6 @@ async function handleMarket(path: string, req: ApiRequest, res: ApiResponse): Pr
   return true
 }
 
-function normalizeBarkServerUrl(value: unknown): string {
-  const raw = String(value || '').trim().replace(/\/+$/, '')
-  if (!raw) return 'https://api.day.app'
-  const url = new URL(raw)
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw Object.assign(new Error('Bark server must be http(s).'), { statusCode: 400 })
-  return url.toString().replace(/\/+$/, '')
-}
-
-async function handleNotifications(path: string, req: ApiRequest, res: ApiResponse): Promise<boolean> {
-  if (path !== 'notifications/send') return false
-  if (!methodAllowed(req, res, 'POST')) return true
-
-  try {
-    const body = await readJsonBody<{
-      provider: string
-      title: string
-      body: string
-      url?: string
-      bark?: {
-        serverUrl?: string
-        deviceKey?: string
-        group?: string
-        level?: string
-        sound?: string
-      }
-    }>(req)
-
-    if (body.provider !== 'bark') {
-      sendJson(res, 400, { error: 'Unsupported notification provider' })
-      return true
-    }
-    const deviceKey = String(body.bark?.deviceKey || '').trim()
-    if (!deviceKey) {
-      sendJson(res, 400, { error: 'Missing Bark device key' })
-      return true
-    }
-
-    const target = `${normalizeBarkServerUrl(body.bark?.serverUrl)}/push`
-    const payload: Record<string, unknown> = {
-      device_key: deviceKey,
-      title: String(body.title || 'AI Stock Dashboard').slice(0, 120),
-      body: String(body.body || '').slice(0, 4000),
-      group: String(body.bark?.group || 'AI Stock Dashboard').slice(0, 80),
-      level: body.bark?.level || 'active',
-    }
-    if (body.bark?.sound) payload.sound = body.bark.sound
-    if (body.url) payload.url = body.url
-
-    const upstream = await fetch(target, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify(payload),
-    })
-    const text = await upstream.text()
-    if (!upstream.ok) {
-      sendJson(res, upstream.status, { error: 'Bark request failed', message: text.slice(0, 300) })
-      return true
-    }
-    sendJson(res, 200, { ok: true })
-  } catch (e) {
-    sendJson(res, statusFromError(e), { error: 'Notification service error', message: messageFromError(e) })
-  }
-  return true
-}
-
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   try {
     const path = pathFromRequest(req)
@@ -895,14 +830,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return
     }
 
-    if (await handleAiProxy(path, req, res)) return
-    if (await handleMarket(path, req, res)) return
-    if (await handleAuth(path, req, res)) return
-    if (await handleAi(path, req, res)) return
-    if (await handleLongbridge(path, req, res)) return
-    if (await handleNotifications(path, req, res)) return
+  if (await handleAiProxy(path, req, res)) return
+  if (await handleMarket(path, req, res)) return
+  if (await handleAuth(path, req, res)) return
+  if (await handleAi(path, req, res)) return
+  if (await handleLongbridge(path, req, res)) return
 
-    sendJson(res, 404, { error: 'Not found' })
+  sendJson(res, 404, { error: 'Not found' })
   } catch (e) {
     sendJson(res, statusFromError(e), { error: 'API service error', message: messageFromError(e) })
   }

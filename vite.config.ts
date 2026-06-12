@@ -101,16 +101,13 @@ function unifiedDevApiPlugin(): Plugin {
         }
 
         try {
-          const isAccountApi = url.pathname === '/api/account' || url.pathname.startsWith('/api/account/')
-          const mod = isAccountApi ? await import('./api/account.ts') : await import('./api/index.ts')
+          const mod = await import('./api/index.ts')
           const query: Record<string, string | string[]> = {}
           url.searchParams.forEach((value, key) => {
             if (query[key]) query[key] = Array.isArray(query[key]) ? [...query[key] as string[], value] : [query[key] as string, value]
             else query[key] = value
           })
-          query.path = isAccountApi
-            ? url.pathname.replace(/^\/api\/account\/?/, '')
-            : url.pathname.replace(/^\/api\/?/, '')
+          query.path = url.pathname.replace(/^\/api\/?/, '')
           const headers: Record<string, string | string[]> = {}
           await mod.default(
             { method: req.method, headers: req.headers, query, url: req.url, on: req.on.bind(req) },

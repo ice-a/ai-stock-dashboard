@@ -7,7 +7,6 @@ import { useWatchlistStore } from '../stores/watchlist'
 import { useSectorStore } from '../stores/sector'
 import { useRefreshStore } from '../stores/refresh'
 import { useAIStore } from '../stores/ai'
-import { useResearchStore } from '../stores/research'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
 import { useMarketSession, detectMarket } from '../composables/useMarketSession'
 import { sourceManager } from '../api/sourceManager'
@@ -31,7 +30,6 @@ const watchlistStore = useWatchlistStore()
 const sectorStore = useSectorStore()
 const refreshStore = useRefreshStore()
 const aiStore = useAIStore()
-const researchStore = useResearchStore()
 
 const symbol = computed(() => decodeURIComponent(String(route.params.symbol || '')))
 const klineRange = ref('6mo')
@@ -51,7 +49,6 @@ const stockMarket = computed<Market>(() => (sectorStock.value?.market as Market)
 
 const quote = computed(() => quotesStore.get(symbol.value))
 const favorite = computed(() => watchlistStore.bySymbol.get(symbol.value))
-const researchHistory = computed(() => researchStore.bySymbol(symbol.value).slice(0, 6))
 
 const klinePoints = ref<KLinePoint[]>([])
 const klineLoading = ref(false)
@@ -61,7 +58,7 @@ const klineError = ref<string | null>(null)
 const detail = ref<StockFullDetail | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
-const expandedReportIds = ref<Set<string>>(new Set())
+
 
 const noteText = ref('')
 const targetPrice = ref<number | null>(null)
@@ -130,12 +127,6 @@ async function generateAdvice() {
     } else {
       detail.value = { news: [], announcements: [], etfs: [], advice }
     }
-    researchStore.addStockAdviceReport({
-      symbol: symbol.value,
-      name: stockName.value,
-      advice,
-      model: aiStore.model,
-    })
   } catch (e) {
     adviceError.value = formatAdviceError((e as Error).message)
   } finally {
@@ -183,22 +174,6 @@ function saveNote() {
   } else {
     watchlistStore.add(symbol.value, 'default', noteText.value, targetPrice.value)
   }
-}
-
-function isReportExpanded(id: string): boolean {
-  return expandedReportIds.value.has(id)
-}
-
-function toggleReport(id: string) {
-  const next = new Set(expandedReportIds.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  expandedReportIds.value = next
-}
-
-function reportPreview(content: string): string {
-  const text = markdownToText(content)
-  return text.slice(0, 220) + (text.length > 220 ? '...' : '')
 }
 
 onMounted(() => {
@@ -538,35 +513,6 @@ const tabs = [
       <template v-else-if="!adviceGenerating">
         <p class="muted small">点击上方按钮，AI 将基于 K 线、新闻和公告生成综合投资建议</p>
       </template>
-    </section>
-
-    <section class="research-history card">
-      <div class="section-head">
-        <h2>研究报告历史</h2>
-        <router-link to="/research" class="small">打开研究库 →</router-link>
-      </div>
-      <div v-if="!researchHistory.length" class="empty muted">暂无历史报告。生成 AI 投资建议后会自动归档。</div>
-      <div v-else class="report-list">
-        <article v-for="report in researchHistory" :key="report.id" class="report-item">
-          <div class="report-head">
-            <strong>{{ report.title }}</strong>
-            <span class="small muted">{{ formatDate(report.createdAt, 'relative') }}</span>
-          </div>
-          <article
-            v-if="isReportExpanded(report.id)"
-            class="markdown-body compact-report"
-            v-html="renderMarkdown(report.content)"
-          ></article>
-          <p v-else>{{ reportPreview(report.content) }}</p>
-          <div class="report-meta small muted">
-            <span>{{ report.kind === 'comparison' ? '对比分析' : '个股建议' }}</span>
-            <span v-if="report.model">模型 {{ report.model }}</span>
-            <button class="link-btn small" @click="toggleReport(report.id)">
-              {{ isReportExpanded(report.id) ? '收起' : '阅读' }}
-            </button>
-          </div>
-        </article>
-      </div>
     </section>
 
     <!-- 自选备注 -->
@@ -915,46 +861,6 @@ const tabs = [
 }
 .ask-link { color: var(--color-link); text-decoration: none; display: inline-block; margin-top: var(--space-2); }
 .ask-link:hover { text-decoration: underline; }
-
-.research-history {
-  margin-bottom: var(--space-5);
-}
-.report-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.report-item {
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-muted);
-}
-.report-head,
-.report-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-.report-item p {
-  margin: var(--space-2) 0;
-  color: var(--color-ink-soft);
-}
-.compact-report {
-  max-height: 420px;
-  margin: var(--space-2) 0;
-  overflow: auto;
-  padding-right: var(--space-2);
-}
-.link-btn {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-link);
-  cursor: pointer;
-}
-.link-btn:hover { text-decoration: underline; }
 
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }

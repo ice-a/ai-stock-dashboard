@@ -4,7 +4,6 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/account/:path*", "destination": "/api/account?path=:path*" },
     { "source": "/api/:path*", "destination": "/api?path=:path*" },
     { "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }
   ],

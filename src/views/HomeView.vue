@@ -8,8 +8,8 @@ import { useAIStore } from '../stores/ai'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
 import { fetchIndices, type MarketIndex } from '../api/indices'
 import { chat } from '../api/ai'
+import { fetchHitokoto, type HitokotoSentence } from '../api/hitokoto'
 import QuoteCard from '../components/QuoteCard.vue'
-import HitokotoBar from '../components/HitokotoBar.vue'
 import { formatPercent } from '../utils/format'
 import type { Market, SectorStock } from '../sectors/types'
 
@@ -35,6 +35,13 @@ const today = new Date()
 const dateStr = today.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
 const calendarInfo = ref<string | null>(null)
 const calendarLoading = ref(false)
+
+// 一言
+const hitokoto = ref<HitokotoSentence>({ hitokoto: '投资最重要的品质是耐心和纪律。', from: '', from_who: null, type: 'e' })
+
+async function refreshHitokoto() {
+  hitokoto.value = await fetchHitokoto()
+}
 
 // 默认使用 AI 产业链板块
 const activeSector = computed(() => sectorStore.activeSector)
@@ -221,13 +228,15 @@ async function loadCalendar() {
 
 onMounted(() => {
   loadIndices()
+  refreshHitokoto()
   const sector = activeSector.value
   if (sector) sectorSummary.value = loadSummaryFromCache(sector.id)
   refreshNow()
 })
 
-// 切换板块时只读取缓存，避免自动消耗 AI 配额
+// 切换板块时刷新一言和读取缓存
 watch(() => sectorStore.activeId, () => {
+  refreshHitokoto()
   const sector = activeSector.value
   sectorSummary.value = sector ? loadSummaryFromCache(sector.id) : null
 })
@@ -248,6 +257,14 @@ function goToStock(symbol: string) {
           {{ calendarLoading ? '万年历加载中…' : '生成万年历' }}
         </button>
       </div>
+    </section>
+
+    <!-- 一言 -->
+    <section class="hitokoto-bar" @click="refreshHitokoto">
+      <span class="hk-text">「{{ hitokoto.hitokoto }}」</span>
+      <span v-if="hitokoto.from_who || hitokoto.from" class="hk-from small muted">
+        —— {{ hitokoto.from_who || hitokoto.from }}
+      </span>
     </section>
 
     <!-- 全球指数 -->
@@ -287,7 +304,6 @@ function goToStock(symbol: string) {
           <span class="stat-label small muted">个层级</span>
         </div>
       </div>
-      <HitokotoBar class="hero-hitokoto" />
     </section>
 
     <!-- AI 板块摘要 -->
@@ -421,14 +437,28 @@ function goToStock(symbol: string) {
 }
 .date-action:hover { color: var(--color-link); }
 
+/* 一言 */
+.hitokoto-bar {
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-left: 3px solid var(--color-link);
+  background: var(--color-bg-elevated);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.hitokoto-bar:hover { background: var(--color-bg-muted); }
+.hk-text { font-style: italic; color: var(--color-ink); }
+.hk-from { margin-left: var(--space-2); }
+
 /* 全球指数 */
 .indices-section {
   margin-bottom: var(--space-5);
 }
 .indices-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
 }
 .index-chip {
   min-width: 0;
@@ -463,11 +493,6 @@ function goToStock(symbol: string) {
 }
 
 .hero { margin-bottom: var(--space-5); }
-.hero-hitokoto {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
 .hero-top {
   display: flex;
   justify-content: space-between;

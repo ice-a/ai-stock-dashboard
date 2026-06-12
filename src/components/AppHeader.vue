@@ -23,7 +23,7 @@ const headerTitle = computed(() => {
 })
 
 const accountLabel = computed(() => {
-  if (account.authenticated && account.user) return account.user
+  if (account.authenticated) return '已验证'
   if (account.guest) return '游客'
   return account.enabled ? '未登录' : '本地'
 })

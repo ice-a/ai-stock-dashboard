@@ -113,13 +113,22 @@ class SourceManager {
     const order = resolveOrder(this.providers, options.preferred)
     if (order.length === 0) return staticFallback(symbol)
 
-    for (const id of order) {
-      const provider = this.providers.find(p => p.meta.id === id)
-      if (!provider?.fetchQuote) continue
-      const result = await provider.fetchQuote(symbol, { signal: options.signal })
-      recordHealth(result, id)
-      if (result.ok && result.data && result.data.price != null) {
-        return result.data
+    const results = await Promise.allSettled(
+      order.map(async (id) => {
+        const provider = this.providers.find(p => p.meta.id === id)
+        if (!provider?.fetchQuote) return null
+        const result = await provider.fetchQuote(symbol, { signal: options.signal })
+        recordHealth(result, id)
+        if (result.ok && result.data && result.data.price != null) {
+          return result.data
+        }
+        return null
+      })
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        return r.value
       }
     }
     return staticFallback(symbol)
@@ -133,21 +142,23 @@ class SourceManager {
     const order = resolveOrder(this.providers, options.preferred)
     if (order.length === 0) return symbols.map(staticFallback)
 
-    const bySymbol = new Map<string, Quote>()
-    const missing = new Set(symbols)
+    const results = await Promise.allSettled(
+      order.map(async (id) => {
+        const provider = this.providers.find(p => p.meta.id === id)
+        if (!provider?.fetchQuotes) return { id, data: [] as Quote[] }
+        const result = await provider.fetchQuotes(symbols, { signal: options.signal })
+        recordHealth(result, id)
+        return { id, data: result.data || [] }
+      })
+    )
 
-    for (const id of order) {
-      const provider = this.providers.find(p => p.meta.id === id)
-      if (!provider?.fetchQuotes) continue
-      const pendingSymbols = symbols.filter(symbol => missing.has(symbol))
-      if (pendingSymbols.length === 0) break
-      const result = await provider.fetchQuotes(pendingSymbols, { signal: options.signal })
-      recordHealth(result, id)
-      if (result.data) {
-        for (const q of result.data) {
-          if (q.price == null) continue
+    const bySymbol = new Map<string, Quote>()
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue
+      for (const q of r.value.data) {
+        if (q.price == null) continue
+        if (!bySymbol.has(q.symbol)) {
           bySymbol.set(q.symbol, q)
-          missing.delete(q.symbol)
         }
       }
     }
@@ -161,17 +172,27 @@ class SourceManager {
   ): Promise<KLineData | null> {
     await this.refreshConfigured(options.signal)
     const order = resolveOrder(this.providers, options.preferred)
-    for (const id of order) {
-      const provider = this.providers.find(p => p.meta.id === id)
-      if (!provider?.fetchKLine) continue
-      const result = await provider.fetchKLine(symbol, {
-        range: options.range,
-        interval: options.interval,
-        signal: options.signal,
+
+    const results = await Promise.allSettled(
+      order.map(async (id) => {
+        const provider = this.providers.find(p => p.meta.id === id)
+        if (!provider?.fetchKLine) return null
+        const result = await provider.fetchKLine(symbol, {
+          range: options.range,
+          interval: options.interval,
+          signal: options.signal,
+        })
+        recordHealth(result, id)
+        if (result.ok && result.data && result.data.points.length > 0) {
+          return result.data
+        }
+        return null
       })
-      recordHealth(result, id)
-      if (result.ok && result.data && result.data.points.length > 0) {
-        return result.data
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) {
+        return r.value
       }
     }
     return null

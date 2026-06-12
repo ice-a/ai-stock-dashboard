@@ -8,14 +8,10 @@ import { useWatchlistStore } from '../stores/watchlist'
 import { usePortfolioStore } from '../stores/portfolio'
 import { useSectorStore } from '../stores/sector'
 import { useAIStore } from '../stores/ai'
-import { useNotificationsStore } from '../stores/notifications'
 import { useRuntimeConfigStore } from '../stores/runtimeConfig'
-import { useAccountStore } from '../stores/account'
-import { useSubscriptionStore } from '../stores/subscription'
 import { listModels, type ModelInfo } from '../api/ai'
 import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 import { setLocale, type Locale } from '../i18n'
-import { loadPersonalConfigFromCloud, savePersonalConfigToCloud } from '../utils/personalConfig'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -25,20 +21,12 @@ const watchlist = useWatchlistStore()
 const portfolio = usePortfolioStore()
 const sectorStore = useSectorStore()
 const aiStore = useAIStore()
-const notifications = useNotificationsStore()
 const runtimeConfig = useRuntimeConfigStore()
-const accountStore = useAccountStore()
-const subscriptionStore = useSubscriptionStore()
 
-// ============ AI 模型配置 ============
 const modelList = ref<ModelInfo[]>([])
 const modelLoading = ref(false)
 const modelTestResult = ref<string | null>(null)
-const cloudSyncing = ref(false)
-const cloudSyncResult = ref<string | null>(null)
-const notificationResult = ref<string | null>(null)
 
-// 合并当前拉取的模型和已保存的模型列表
 const allModels = computed(() => {
   const map = new Map<string, ModelInfo>()
   for (const m of aiStore.availableModels) map.set(m.id, m)
@@ -46,80 +34,15 @@ const allModels = computed(() => {
   return [...map.values()]
 })
 
-const accountName = computed(() => {
-  if (accountStore.authenticated && accountStore.user) return accountStore.user
-  if (accountStore.guest) return '游客'
-  return accountStore.enabled ? '未登录' : '本地'
-})
-
-const accountStorage = computed(() => accountStore.authenticated ? 'MongoDB' : '本机浏览器')
-
 onMounted(() => {
-  // 初始模型列表：有凭证就尝试拉取
   if (aiStore.hasCredentials) {
     refreshModels()
   }
-  accountStore.refresh({ timeoutMs: 2000 })
 })
 
 function saveAI() {
   aiStore.save()
   modelTestResult.value = '✓ 已保存'
-}
-
-function saveNotifications() {
-  notifications.save()
-  notificationResult.value = '✓ 已保存'
-}
-
-async function testNotifications() {
-  notifications.save()
-  notificationResult.value = '正在发送测试通知…'
-  const ok = await notifications.test()
-  notificationResult.value = ok ? '✓ 测试通知已发送' : `✗ ${notifications.config.lastError || '发送失败'}`
-}
-
-async function saveCloudConfig() {
-  if (!accountStore.authenticated) {
-    cloudSyncResult.value = '✗ 请先登录账户'
-    return
-  }
-  cloudSyncing.value = true
-  cloudSyncResult.value = '正在保存个人配置…'
-  try {
-    const updatedAt = await savePersonalConfigToCloud()
-    cloudSyncResult.value = `✓ 已保存到 MongoDB${updatedAt ? ` · ${new Date(updatedAt).toLocaleString()}` : ''}`
-  } catch (e) {
-    cloudSyncResult.value = `✗ ${(e as Error).message}`
-  } finally {
-    cloudSyncing.value = false
-  }
-}
-
-async function loadCloudConfig() {
-  if (!accountStore.authenticated) {
-    cloudSyncResult.value = '✗ 请先登录账户'
-    return
-  }
-  cloudSyncing.value = true
-  cloudSyncResult.value = '正在载入个人配置…'
-  try {
-    const result = await loadPersonalConfigFromCloud()
-    if (!result.loaded) {
-      cloudSyncResult.value = '未找到云端配置，当前本地配置保持不变。'
-      return
-    }
-    cloudSyncResult.value = `✓ 已载入：${result.applied.join('、') || '配置'}${result.updatedAt ? ` · ${new Date(result.updatedAt).toLocaleString()}` : ''}`
-  } catch (e) {
-    cloudSyncResult.value = `✗ ${(e as Error).message}`
-  } finally {
-    cloudSyncing.value = false
-  }
-}
-
-async function logoutAccount() {
-  await accountStore.logout()
-  window.location.href = '/login'
 }
 
 async function refreshModels() {
@@ -133,7 +56,6 @@ async function refreshModels() {
     const list = await listModels(aiStore.baseUrl, aiStore.apiKey)
     modelList.value = list
     aiStore.setAvailableModels(list)
-    // 自动选择第一个模型（如果当前未选择）
     if (!aiStore.model && list.length > 0) {
       aiStore.setModel(list[0].id)
     }
@@ -145,7 +67,6 @@ async function refreshModels() {
   }
 }
 
-// ============ 主题 / 语言 / 刷新 ============
 function onThemeChange(m: 'light' | 'dark' | 'system') {
   settings.setTheme(m)
 }
@@ -261,22 +182,6 @@ function onAllFileSelected(e: Event) {
 <template>
   <div class="page">
     <h1>{{ t('settings.title') }}</h1>
-
-    <section v-if="accountStore.authenticated" class="card section subscription-banner">
-      <div class="sub-info">
-        <span class="sub-label">当前订阅</span>
-        <span class="sub-tier" :class="subscriptionStore.tier">{{ subscriptionStore.currentPlan.name }}</span>
-        <span v-if="subscriptionStore.isPaid && subscriptionStore.daysRemaining != null" class="sub-remaining">
-          剩余 {{ subscriptionStore.daysRemaining }} 天
-        </span>
-        <span v-if="!subscriptionStore.isPaid" class="sub-usage">
-          今日 AI: {{ subscriptionStore.usageLimits.aiRequestsUsed }}/5
-        </span>
-      </div>
-      <router-link to="/subscription" class="btn sm">
-        {{ subscriptionStore.isPaid ? '管理订阅' : '升级 Pro' }}
-      </router-link>
-    </section>
 
     <section class="card section">
       <h2>{{ t('settings.theme') }}</h2>
@@ -402,53 +307,6 @@ function onAllFileSelected(e: Event) {
     </section>
 
     <section class="card section">
-      <h2>Webhook 通知</h2>
-      <p class="small muted">当前支持 Bark；预警触发时会发送通知，后续可扩展其他 webhook provider。</p>
-      <div class="form-row">
-        <label class="switch">
-          <input v-model="notifications.config.enabled" type="checkbox" />
-          <span>启用通知</span>
-        </label>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">Provider</label>
-        <select v-model="notifications.config.provider">
-          <option value="bark">Bark</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">Bark Server</label>
-        <input v-model="notifications.config.bark.serverUrl" type="text" placeholder="https://api.day.app" class="grow" />
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">Device Key</label>
-        <input v-model="notifications.config.bark.deviceKey" type="password" placeholder="Bark 推送 key" class="grow" />
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">分组</label>
-        <input v-model="notifications.config.bark.group" type="text" placeholder="AI Stock Dashboard" />
-        <label class="lbl small muted">级别</label>
-        <select v-model="notifications.config.bark.level">
-          <option value="active">active</option>
-          <option value="timeSensitive">timeSensitive</option>
-          <option value="passive">passive</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">声音</label>
-        <input v-model="notifications.config.bark.sound" type="text" placeholder="可选，如 glass" />
-      </div>
-      <div class="form-row">
-        <button class="btn primary" @click="saveNotifications">保存通知配置</button>
-        <button class="btn" :disabled="notifications.sending || !notifications.config.bark.deviceKey" @click="testNotifications">
-          <span v-if="notifications.sending" class="spinner"></span>
-          发送测试
-        </button>
-        <span v-if="notificationResult" class="test-result small" :class="notificationResult.startsWith('✓') ? 'pos' : 'neg'">{{ notificationResult }}</span>
-      </div>
-    </section>
-
-    <section class="card section">
       <h2>{{ t('settings.about') }}</h2>
       <p class="small muted">{{ t('settings.aboutText') }}</p>
     </section>
@@ -458,32 +316,6 @@ function onAllFileSelected(e: Event) {
 <style scoped>
 .section { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); }
 .section h2 { font-size: var(--fs-lg); margin: 0; }
-.subscription-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(135deg, var(--color-info-bg), var(--color-bg-elevated));
-}
-.sub-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.sub-label { font-size: var(--fs-sm); color: var(--color-muted); }
-.sub-tier {
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-}
-.sub-tier.free { background: var(--color-bg-muted); color: var(--color-muted); }
-.sub-tier.pro { background: var(--color-link-bg); color: var(--color-link); }
-.sub-tier.team { background: var(--color-purple-bg, var(--color-link-bg)); color: var(--color-purple, var(--color-link)); }
-.sub-remaining, .sub-usage {
-  font-size: var(--fs-xs);
-  color: var(--color-muted);
-}
 .theme-options { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .radio-card {
   display: flex; align-items: center; gap: var(--space-2);
@@ -510,20 +342,7 @@ function onAllFileSelected(e: Event) {
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }
 .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.account-panel { display: flex; flex-direction: column; gap: var(--space-3); }
-.account-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: var(--space-2); }
-.account-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-soft);
-}
-.account-meta strong { overflow-wrap: anywhere; }
 .stats-row { display: flex; gap: var(--space-4); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
-details summary { cursor: pointer; padding: 4px 0; }
 .spinner {
   display: inline-block; width: 10px; height: 10px;
   border: 2px solid currentColor; border-right-color: transparent;
@@ -531,7 +350,4 @@ details summary { cursor: pointer; padding: 4px 0; }
   margin-right: 4px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (max-width: 640px) {
-  .account-grid { grid-template-columns: 1fr 1fr; }
-}
 </style>

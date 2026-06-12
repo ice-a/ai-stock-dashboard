@@ -40,11 +40,6 @@ export function useKeyboardShortcuts(extraShortcuts: ShortcutConfig[] = []) {
       action: () => router.push('/alerts'),
     },
     {
-      key: 'r',
-      description: '研究库',
-      action: () => router.push('/research'),
-    },
-    {
       key: ',',
       description: '设置',
       action: () => router.push('/settings'),

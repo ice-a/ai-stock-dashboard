@@ -6,28 +6,21 @@ import AppSidebar from './components/AppSidebar.vue'
 import { useQuotesStore } from './stores/quotes'
 import { useRefreshStore } from './stores/refresh'
 import { useTopicStore } from './stores/topic'
-import { usePortfolioStore } from './stores/portfolio'
-import { useAlertsStore } from './stores/alerts'
 import { useAutoRefresh } from './composables/useAutoRefresh'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
 const topicStore = useTopicStore()
-const portfolioStore = usePortfolioStore()
-const alertsStore = useAlertsStore()
 const route = useRoute()
 
 const isPublicPage = computed(() => route.meta?.public === true)
 
-// 启动时拉当前主题的观察名单 + 自选股
 const initialSymbols = computed(() => {
   const set = new Set<string>()
   for (const i of topicStore.currentData.watchlistIdeas) set.add(i.symbol)
   for (const s of topicStore.currentData.leaderUniverse) set.add(s.symbol)
-  for (const s of portfolioStore.symbols) set.add(s)
-  for (const s of alertsStore.symbols) set.add(s)
-  return [...set].slice(0, 100)  // 限制初始量
+  return [...set].slice(0, 100)
 })
 
 const enabled = computed(() => refreshStore.enabled)
@@ -40,7 +33,11 @@ const { refreshNow } = useAutoRefresh({
     if (isPublicPage.value) return
     if (initialSymbols.value.length === 0) return
     await quotesStore.fetchAndStore(initialSymbols.value, { force: false })
-    alertsStore.evaluateAll()
+    try {
+      const { useAlertsStore } = await import('./stores/alerts')
+      const alertsStore = useAlertsStore()
+      alertsStore.evaluateAll()
+    } catch { /* ignore */ }
   }
 })
 
@@ -53,13 +50,11 @@ useKeyboardShortcuts([
   },
 ])
 
-// 切换主题时清缓存重新拉
 watch(() => topicStore.activeId, () => {
   quotesStore.clear()
   refreshNow()
 })
 
-// 启动后延迟预热全局行情，避免和首屏页面自己的请求抢网络。
 const bootstrapped = ref(false)
 
 function scheduleInitialRefresh() {
@@ -92,7 +87,9 @@ function handleRefresh() {
       <main class="main">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
-            <component :is="Component" />
+            <keep-alive :include="['HomeView', 'StockDetailView', 'SectorsView', 'SectorDetailView']">
+              <component :is="Component" />
+            </keep-alive>
           </transition>
         </router-view>
       </main>

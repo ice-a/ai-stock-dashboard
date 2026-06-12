@@ -52,18 +52,6 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '预警中心' }
   },
   {
-    path: '/market-cloud',
-    name: 'market-cloud',
-    component: () => import('../views/MarketCloudView.vue'),
-    meta: { title: '大盘云图' }
-  },
-  {
-    path: '/user',
-    name: 'user-info',
-    component: () => import('../views/UserInfoView.vue'),
-    meta: { title: '用户信息' }
-  },
-  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('../views/MyFavoritesView.vue'),
@@ -76,28 +64,10 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'AI 问答' }
   },
   {
-    path: '/research',
-    name: 'research',
-    component: () => import('../views/ResearchView.vue'),
-    meta: { title: '研究库' }
-  },
-  {
     path: '/mystic',
     name: 'mystic-pick',
     component: () => import('../views/MysticPickView.vue'),
     meta: { title: '玄学选股' }
-  },
-  {
-    path: '/compare',
-    name: 'compare',
-    component: () => import('../views/CompareView.vue'),
-    meta: { title: '股票对比' }
-  },
-  {
-    path: '/subscription',
-    name: 'subscription',
-    component: () => import('../views/SubscriptionView.vue'),
-    meta: { title: '订阅管理' }
   },
   {
     path: '/settings',
@@ -105,13 +75,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/SettingsView.vue'),
     meta: { title: '设置' }
   },
-  // 兼容旧路由
   { path: '/chain', redirect: '/sectors' },
   { path: '/dsx', redirect: '/' },
   { path: '/universe', redirect: '/sectors' },
   { path: '/watchlist', redirect: '/favorites' },
   { path: '/deep-dive', redirect: '/favorites' },
   { path: '/topics', redirect: '/sectors' },
+  { path: '/research', redirect: '/' },
+  { path: '/compare', redirect: '/' },
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 

@@ -1,7 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { usePortfolioStore } from './portfolio'
-import { useNotificationsStore } from './notifications'
 import { useQuotesStore } from './quotes'
 import { useWatchlistStore } from './watchlist'
 import { formatPercent, formatPrice } from '../utils/format'
@@ -115,7 +114,6 @@ export const useAlertsStore = defineStore('alerts', () => {
   const quotesStore = useQuotesStore()
   const portfolioStore = usePortfolioStore()
   const watchlistStore = useWatchlistStore()
-  const notificationsStore = useNotificationsStore()
 
   const enabledRules = computed(() => rules.value.filter(rule => rule.enabled))
   const symbols = computed(() => [...new Set(rules.value.map(rule => rule.symbol))])
@@ -197,7 +195,6 @@ export const useAlertsStore = defineStore('alerts', () => {
     events.value.unshift(event)
     updateRule(rule.id, { lastTriggeredAt: now })
     if (events.value.length > 200) events.value = events.value.slice(0, 200)
-    void notificationsStore.sendAlert(event)
     return event
   }
 

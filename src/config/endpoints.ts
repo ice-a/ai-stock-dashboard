@@ -7,16 +7,6 @@ export const APP_API_ROUTES = {
   authStatus: '/api/auth/status',
   authLogin: '/api/auth/login',
   authLogout: '/api/auth/logout',
-  accountStatus: '/api/account/status',
-  accountLogin: '/api/account/login',
-  accountRegister: '/api/account/register',
-  accountLogout: '/api/account/logout',
-  accountConfig: '/api/account/config',
-  subscriptionStatus: '/api/subscription/status',
-  subscriptionCheckout: '/api/subscription/checkout',
-  subscriptionCancel: '/api/subscription/cancel',
-  subscriptionWebhook: '/api/subscription/webhook',
-  notificationsSend: '/api/notifications/send',
   longbridgeStatus: '/api/longbridge/status',
   longbridgeQuotes: '/api/longbridge/quotes',
   longbridgeCandlesticks: '/api/longbridge/candlesticks',
@@ -56,9 +46,6 @@ export const EXTERNAL_ENDPOINTS = {
   sina: {
     quoteBaseUrl: 'https://hq.sinajs.cn',
     financeReferer: 'https://finance.sina.com.cn',
-  },
-  hitokoto: {
-    sentenceUrl: 'https://v1.hitokoto.cn/',
   },
   externalLinks: {
     longportQuoteBaseUrl: 'https://longportapp.cn/zh-CN/quote',

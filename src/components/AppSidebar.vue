@@ -14,13 +14,8 @@ const navItems = computed(() => [
   { to: '/favorites', label: '自选股', icon: 'WL' },
   { to: '/portfolio', label: '持仓', icon: 'PF' },
   { to: '/alerts', label: '预警中心', icon: 'AL' },
-  { to: '/market-cloud', label: '大盘云图', icon: 'MC' },
-  { to: '/user', label: '用户信息', icon: 'US' },
   { to: '/ask', label: 'AI 问答', icon: 'AI' },
-  { to: '/research', label: '研究库', icon: 'RS' },
   { to: '/mystic', label: '玄学选股', icon: 'MX' },
-  { to: '/compare', label: '股票对比', icon: 'CP' },
-  { to: '/subscription', label: '订阅管理', icon: '💎' },
   { to: '/settings', label: '设置', icon: 'ST' },
 ])
 
