@@ -32,7 +32,7 @@ async function searchStocks(keyword: string): Promise<any[]> {
     const data = json?.QuotationCodeTable?.Data || []
     
     return data
-      .filter((item: any) => ['股票', 'ETF'].includes(item.SecurityTypeName))
+      .filter((item: any) => ['股票', 'ETF', 'AStock', 'HKStock', 'USStock'].includes(item.SecurityTypeName) || item.Classify === 'AStock')
       .map((item: any) => {
         const code = item.Code
         const mktNum = Number(item.MktNum)
