@@ -5,11 +5,11 @@ import { useAIStore } from '../stores/ai'
 import { sourceManager } from '../api/sourceManager'
 import { chat } from '../api/ai'
 import { fetchStockFullDetail, type StockFullDetail } from '../api/stockDetail'
-import { DEFAULT_SECTORS } from '../sectors/defaults'
+import { getPopularStocks, type StockItem } from '../data/popularStocks'
 import { analyzeStock, type StockAnalysis } from '../utils/analysis'
 import { formatPercent, formatPrice, formatVolume, quoteTone } from '../utils/format'
-import type { Quote } from '../types'
-import type { Market, SectorStock } from '../sectors/types'
+import MysticAnimation from '../components/MysticAnimation.vue'
+import type { Quote, Market } from '../types'
 
 type MysticMethod = 'tarot' | 'liuyao' | 'meihua' | 'xiaoliuren' | 'astro'
 
@@ -22,7 +22,7 @@ interface MysticReading {
 }
 
 interface PickResult {
-  stock: SectorStock
+  stock: StockItem
   reading: MysticReading
   quote: Quote | null
   detail: StockFullDetail
@@ -39,6 +39,7 @@ const picking = ref(false)
 const aiLoading = ref(false)
 const error = ref<string | null>(null)
 const result = ref<PickResult | null>(null)
+const animating = ref(false)
 
 const markets: Market[] = ['美股', '港股', 'A股']
 const methods: Array<{ id: MysticMethod; label: string }> = [
@@ -49,15 +50,7 @@ const methods: Array<{ id: MysticMethod; label: string }> = [
   { id: 'astro', label: '占星骰子' },
 ]
 
-const allStocks = computed(() => {
-  const map = new Map<string, SectorStock>()
-  for (const sector of DEFAULT_SECTORS) {
-    for (const stock of sector.stocks) {
-      if (!map.has(stock.symbol)) map.set(stock.symbol, stock)
-    }
-  }
-  return [...map.values()]
-})
+const allStocks = computed(() => getPopularStocks(50))
 
 const candidates = computed(() => allStocks.value.filter(stock => stock.market === market.value))
 
@@ -71,7 +64,7 @@ function drawFrom<T>(items: T[]): T {
   return items[rand(items.length)]
 }
 
-function makeReading(selectedMethod: MysticMethod, stock: SectorStock): MysticReading {
+function makeReading(selectedMethod: MysticMethod, stock: StockItem): MysticReading {
   if (selectedMethod === 'tarot') return tarotReading(stock)
   if (selectedMethod === 'liuyao') return liuyaoReading(stock)
   if (selectedMethod === 'meihua') return meihuaReading(stock)
@@ -79,7 +72,7 @@ function makeReading(selectedMethod: MysticMethod, stock: SectorStock): MysticRe
   return astroReading(stock)
 }
 
-function tarotReading(stock: SectorStock): MysticReading {
+function tarotReading(stock: StockItem): MysticReading {
   const cards = [
     ['星币骑士', '稳健推进，偏向基本面和现金流验证'],
     ['权杖三', '远方机会打开，适合看产业扩张和海外变量'],
@@ -99,7 +92,7 @@ function tarotReading(stock: SectorStock): MysticReading {
   }
 }
 
-function liuyaoReading(stock: SectorStock): MysticReading {
+function liuyaoReading(stock: StockItem): MysticReading {
   const gua = ['乾为天', '坤为地', '水雷屯', '山水蒙', '水天需', '天水讼', '地水师', '风天小畜', '地天泰', '天地否', '雷火丰', '火风鼎']
   const lines = Array.from({ length: 6 }, () => rand(2) === 0 ? '— —' : '———')
   const moving = rand(6) + 1
@@ -113,7 +106,7 @@ function liuyaoReading(stock: SectorStock): MysticReading {
   }
 }
 
-function meihuaReading(stock: SectorStock): MysticReading {
+function meihuaReading(stock: StockItem): MysticReading {
   const trigram = ['乾', '兑', '离', '震', '巽', '坎', '艮', '坤']
   const upper = drawFrom(trigram)
   const lower = drawFrom(trigram)
@@ -127,7 +120,7 @@ function meihuaReading(stock: SectorStock): MysticReading {
   }
 }
 
-function xiaoliurenReading(stock: SectorStock): MysticReading {
+function xiaoliurenReading(stock: StockItem): MysticReading {
   const states = [
     ['大安', '稳定守成，适合看龙头和低波动位置'],
     ['留连', '进展偏慢，先等更清晰的信号'],
@@ -146,7 +139,7 @@ function xiaoliurenReading(stock: SectorStock): MysticReading {
   }
 }
 
-function astroReading(stock: SectorStock): MysticReading {
+function astroReading(stock: StockItem): MysticReading {
   const planets = ['太阳', '月亮', '水星', '金星', '火星', '木星', '土星', '天王星', '海王星', '冥王星']
   const signs = ['白羊', '金牛', '双子', '巨蟹', '狮子', '处女', '天秤', '天蝎', '射手', '摩羯', '水瓶', '双鱼']
   const houses = ['一宫', '二宫', '三宫', '四宫', '五宫', '六宫', '七宫', '八宫', '九宫', '十宫', '十一宫', '十二宫']
@@ -165,9 +158,11 @@ function astroReading(stock: SectorStock): MysticReading {
 async function pickStock() {
   error.value = null
   result.value = null
+  animating.value = true
   const pool = candidates.value
   if (!pool.length) {
     error.value = '当前市场暂无候选股票。'
+    animating.value = false
     return
   }
 
@@ -175,6 +170,16 @@ async function pickStock() {
   try {
     const stock = drawFrom(pool)
     const reading = makeReading(method.value, stock)
+    
+    // 等待动画播放完成（根据不同方式调整时间）
+    const animationDuration = method.value === 'tarot' ? 5000 : 
+                              method.value === 'astro' ? 4000 : 
+                              method.value === 'liuyao' || method.value === 'meihua' ? 4500 : 3500
+    await new Promise(resolve => setTimeout(resolve, animationDuration))
+    
+    // 动画完成后，显示选股结果，等待3-5秒让用户查看
+    await new Promise(resolve => setTimeout(resolve, 4000))
+    
     const [quote, kline, detail] = await Promise.all([
       sourceManager.fetchQuote(stock.symbol).catch(() => null),
       sourceManager.fetchKLine(stock.symbol, { range: '6mo', interval: '1d' }).catch(() => null),
@@ -193,6 +198,10 @@ async function pickStock() {
     error.value = (e as Error).message || '玄学选股失败，请稍后重试。'
   } finally {
     picking.value = false
+    // 延迟关闭动画，让用户看到最终结果
+    setTimeout(() => {
+      animating.value = false
+    }, 2000)
   }
 }
 
@@ -419,6 +428,18 @@ function goToStock(symbol: string) {
 
     <p v-if="error" class="error-line">{{ error }}</p>
 
+    <!-- 动画区域 -->
+    <section v-if="animating && !result" class="animation-section">
+      <MysticAnimation
+        :type="method"
+        title=""
+        symbol-text=""
+        meaning=""
+        :details="[]"
+        :playing="animating && !result"
+      />
+    </section>
+
     <section v-if="result" class="result-layout">
       <div class="reading-panel">
         <div class="panel-head">
@@ -592,6 +613,13 @@ function goToStock(symbol: string) {
   margin: 0;
   color: var(--color-down);
   font-size: var(--fs-sm);
+}
+.animation-section {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 .result-layout {
   display: grid;

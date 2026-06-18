@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ThemeToggle from './ThemeToggle.vue'
 import LangSwitch from './LangSwitch.vue'
 import RefreshIndicator from './RefreshIndicator.vue'
 import { useAccountStore } from '../stores/account'
+import { useUserStore } from '../stores/user'
 import { useMarketSession } from '../composables/useMarketSession'
 
 const { t } = useI18n()
 const route = useRoute()
 const emit = defineEmits<{ (e: 'refresh'): void }>()
 const account = useAccountStore()
+const userStore = useUserStore()
 const { isOpen } = useMarketSession()
+const avatarError = ref(false)
 
 const subtitle = computed(() => {
   return t('app.subtitle')
@@ -23,10 +26,25 @@ const headerTitle = computed(() => {
 })
 
 const accountLabel = computed(() => {
+  if (userStore.isLoggedIn) return userStore.user?.nickname || userStore.user?.userId || '用户'
   if (account.authenticated) return '已验证'
   if (account.guest) return '游客'
   return account.enabled ? '未登录' : '本地'
 })
+
+const userAvatarUrl = computed(() => {
+  if (!userStore.user?.avatarUrl || avatarError.value) return null
+  return userStore.user.avatarUrl
+})
+
+const userAvatarInitial = computed(() => {
+  if (!userStore.user) return '?'
+  return userStore.user.nickname?.[0]?.toUpperCase() || userStore.user.userId[0].toUpperCase()
+})
+
+function onAvatarError() {
+  avatarError.value = true
+}
 
 const marketStatuses = computed(() => {
   return [
@@ -67,7 +85,13 @@ const marketStatuses = computed(() => {
           {{ ms.label }}
         </span>
       </div>
-      <router-link to="/user" class="user-chip" :title="`用户：${accountLabel}`">{{ accountLabel }}</router-link>
+      <router-link to="/user" class="user-chip" :title="`用户：${accountLabel}`">
+        <span class="user-avatar-small">
+          <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="accountLabel" @error="onAvatarError" />
+          <span v-else class="avatar-initial">{{ userAvatarInitial }}</span>
+        </span>
+        <span class="user-label">{{ accountLabel }}</span>
+      </router-link>
       <RefreshIndicator @refresh="emit('refresh')" />
       <LangSwitch />
       <ThemeToggle />
@@ -137,7 +161,8 @@ const marketStatuses = computed(() => {
 .user-chip {
   display: inline-flex;
   align-items: center;
-  max-width: 120px;
+  gap: 6px;
+  max-width: 140px;
   height: 32px;
   padding: 0 10px;
   border: 1px solid var(--color-border);
@@ -151,10 +176,46 @@ const marketStatuses = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .user-chip:hover {
   border-color: var(--color-border-strong);
   text-decoration: none;
 }
+
+.user-avatar-small {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-info-bg);
+  color: var(--color-link);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.user-avatar-small img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.user-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .market-statuses {
   display: flex;
   align-items: center;

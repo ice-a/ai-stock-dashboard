@@ -110,16 +110,25 @@ function normalizeOpenAIBaseUrl(baseUrl: string): string {
 
 function getRuntimeConfig() {
   const ai = readAiConfig()
+  const mongoUri = readEnv('MONGODB_URI')
+  
   return {
     auth: {
       enabled: Boolean(readSitePassword()),
     },
     ai: {
       serverManaged: Boolean(ai.apiKey),
+      configured: Boolean(ai.apiKey),
       baseUrl: ai.baseUrl || OPENAI_DEFAULT_BASE_URL,
       model: ai.model,
       temperature: ai.temperature,
       maxTokens: ai.maxTokens,
+    },
+    mongo: {
+      configured: Boolean(mongoUri),
+    },
+    site: {
+      hasPassword: Boolean(readSitePassword()),
     },
     refresh: {
       listInterval: readOptionalNumberEnv('APP_LIST_REFRESH_SECONDS'),

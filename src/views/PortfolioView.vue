@@ -7,10 +7,12 @@ import { searchStocks, type SearchResult } from '../api/search'
 import { isLikelySupported } from '../api/symbolMap'
 import { formatDate, formatPercent, formatPrice, quoteTone } from '../utils/format'
 import type { PortfolioHolding, PortfolioTransactionType } from '../types'
+import PortfolioShare from '../components/PortfolioShare.vue'
 
 const router = useRouter()
 const portfolio = usePortfolioStore()
 const quotesStore = useQuotesStore()
+const showShareDialog = ref(false)
 
 const form = ref({
   side: 'buy' as PortfolioTransactionType,
@@ -192,7 +194,12 @@ function transactionTone(type: PortfolioTransactionType) {
         <h1>持仓盈亏</h1>
         <p class="muted">记录买入价格、数量、手续费和日期，按实时行情计算浮动盈亏。</p>
       </div>
-      <button class="btn" :disabled="!portfolio.symbols.length" @click="refreshQuotes">刷新行情</button>
+      <div class="head-actions">
+        <button class="btn ghost" :disabled="!portfolio.computedHoldings.length" @click="showShareDialog = true">
+          分享持仓
+        </button>
+        <button class="btn" :disabled="!portfolio.symbols.length" @click="refreshQuotes">刷新行情</button>
+      </div>
     </section>
 
     <section class="summary-grid">
@@ -377,6 +384,24 @@ function transactionTone(type: PortfolioTransactionType) {
         </div>
       </div>
     </section>
+
+    <!-- 分享对话框 -->
+    <Teleport to="body">
+      <div v-if="showShareDialog" class="dialog-overlay" @click.self="showShareDialog = false">
+        <div class="dialog">
+          <div class="dialog-header">
+            <h3>分享持仓</h3>
+            <button class="btn-close" @click="showShareDialog = false">×</button>
+          </div>
+          <div class="dialog-body">
+            <PortfolioShare
+              :holdings="portfolio.computedHoldings"
+              :summary="portfolio.summary"
+            />
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -394,6 +419,12 @@ function transactionTone(type: PortfolioTransactionType) {
   padding: var(--space-5) 0 var(--space-3);
   border-bottom: 1px solid var(--color-border);
 }
+
+.head-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--color-link);
@@ -609,5 +640,63 @@ input {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.dialog {
+  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.btn-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.btn-close:hover {
+  background: var(--color-bg-muted);
+}
+
+.dialog-body {
+  padding: var(--space-4);
 }
 </style>

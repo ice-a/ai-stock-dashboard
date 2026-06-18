@@ -7,10 +7,17 @@ export interface ClientRuntimeConfig {
   }
   ai: {
     serverManaged: boolean
+    configured: boolean
     baseUrl: string
     model: string
     temperature: number
     maxTokens: number
+  }
+  mongo: {
+    configured: boolean
+  }
+  site: {
+    hasPassword: boolean
   }
   refresh: {
     listInterval: number | null
@@ -22,10 +29,17 @@ const DEFAULT_CONFIG: ClientRuntimeConfig = {
   auth: { enabled: false },
   ai: {
     serverManaged: false,
+    configured: false,
     baseUrl: EXTERNAL_ENDPOINTS.openai.baseUrl,
     model: '',
     temperature: 0.7,
     maxTokens: 2000,
+  },
+  mongo: {
+    configured: false,
+  },
+  site: {
+    hasPassword: false,
   },
   refresh: {
     listInterval: null,
@@ -47,7 +61,19 @@ export const useRuntimeConfigStore = defineStore('runtimeConfig', {
           const remote = await r.json()
           this.config = {
             auth: { ...DEFAULT_CONFIG.auth, ...(remote.auth || {}) },
-            ai: { ...DEFAULT_CONFIG.ai, ...(remote.ai || {}) },
+            ai: { 
+              ...DEFAULT_CONFIG.ai, 
+              ...(remote.ai || {}),
+              configured: !!(remote.ai?.apiKey || remote.ai?.serverManaged),
+            },
+            mongo: { 
+              ...DEFAULT_CONFIG.mongo, 
+              ...(remote.mongo || {}),
+            },
+            site: { 
+              ...DEFAULT_CONFIG.site, 
+              ...(remote.site || {}),
+            },
             refresh: { ...DEFAULT_CONFIG.refresh, ...(remote.refresh || {}) },
           }
         }

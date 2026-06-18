@@ -1,7 +1,8 @@
-// 多源调度：按顺序尝试 东方财富 → 新浪 → 长桥 → 静态 fallback
+// 多源调度：按顺序尝试 东方财富 → 新浪 → 长桥 → 长桥CN → 静态 fallback
 import type { Quote, KLineData } from '../types'
 import { getFallbackQuote } from '../data/fallbackQuotes'
 import { longportProvider } from './sources/longportProvider'
+import { longportCnProvider } from './sources/longportCnProvider'
 import { eastmoneyProvider } from './sources/eastmoneyProvider'
 import { sinaProvider } from './sources/sinaProvider'
 import type { QuoteProvider, ProviderResult } from './sources/types'
@@ -19,6 +20,7 @@ export type SourceHealth = {
 
 const health: Record<string, SourceHealth> = {
   longport: { id: 'longport', name: '长桥 Longbridge', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: false },
+  'longport-cn': { id: 'longport-cn', name: '长桥 Longbridge CN', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: false },
   sina: { id: 'sina', name: '新浪财经', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   eastmoney: { id: 'eastmoney', name: '东方财富', lastSuccess: null, lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
   static: { id: 'static', name: '静态快照', lastSuccess: Date.now(), lastError: null, attempts: 0, failures: 0, lastDuration: 0, configured: true },
@@ -73,14 +75,16 @@ function isProviderConfigured(p: QuoteProvider): boolean {
 }
 
 function resolveOrder(providers: QuoteProvider[], preferred?: string[]): string[] {
-  return (preferred || ['eastmoney', 'sina', 'longport']).filter(id => {
+  // 默认优先级：东方财富 → 长桥中国 → 新浪 → 长桥国际
+  const defaultOrder = ['eastmoney', 'longport-cn', 'sina', 'longport']
+  return (preferred || defaultOrder).filter(id => {
     const provider = providers.find(p => p.meta.id === id)
     return provider ? isProviderConfigured(provider) : false
   })
 }
 
 class SourceManager {
-  private providers: QuoteProvider[] = [eastmoneyProvider, sinaProvider, longportProvider]
+  private providers: QuoteProvider[] = [eastmoneyProvider, sinaProvider, longportProvider, longportCnProvider]
 
   list(): SourceHealth[] {
     return Object.values(health)

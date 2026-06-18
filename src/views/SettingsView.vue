@@ -6,12 +6,14 @@ import { useRefreshStore } from '../stores/refresh'
 import { useQuotesStore } from '../stores/quotes'
 import { useWatchlistStore } from '../stores/watchlist'
 import { usePortfolioStore } from '../stores/portfolio'
-import { useSectorStore } from '../stores/sector'
 import { useAIStore } from '../stores/ai'
+import { useUserStore } from '../stores/user'
 import { useRuntimeConfigStore } from '../stores/runtimeConfig'
 import { listModels, type ModelInfo } from '../api/ai'
 import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 import { setLocale, type Locale } from '../i18n'
+import UserAuth from '../components/UserAuth.vue'
+import { syncWatchlist, syncPortfolio, syncSettings, loadWatchlist, loadPortfolio, loadSettings } from '../api/userSync'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -19,13 +21,14 @@ const refresh = useRefreshStore()
 const quotes = useQuotesStore()
 const watchlist = useWatchlistStore()
 const portfolio = usePortfolioStore()
-const sectorStore = useSectorStore()
 const aiStore = useAIStore()
+const userStore = useUserStore()
 const runtimeConfig = useRuntimeConfigStore()
 
 const modelList = ref<ModelInfo[]>([])
 const modelLoading = ref(false)
 const modelTestResult = ref<string | null>(null)
+const syncStatus = ref<string | null>(null)
 
 const allModels = computed(() => {
   const map = new Map<string, ModelInfo>()
@@ -39,6 +42,56 @@ onMounted(() => {
     refreshModels()
   }
 })
+
+// 同步数据到云端
+async function syncToCloud() {
+  syncStatus.value = '同步中...'
+  try {
+    await Promise.all([
+      syncWatchlist(watchlist.items),
+      syncPortfolio(portfolio.holdings, portfolio.transactions),
+      syncSettings({
+        theme: settings.theme,
+        locale: settings.locale,
+        enabled: settings.enabled,
+        listInterval: settings.listInterval,
+        detailInterval: settings.detailInterval,
+      }),
+    ])
+    syncStatus.value = '✓ 同步成功'
+  } catch (e) {
+    syncStatus.value = '✗ 同步失败: ' + (e as Error).message
+  }
+  setTimeout(() => { syncStatus.value = null }, 3000)
+}
+
+// 从云端加载数据
+async function loadFromCloud() {
+  syncStatus.value = '加载中...'
+  try {
+    const [watchlistData, portfolioData, settingsData] = await Promise.all([
+      loadWatchlist(),
+      loadPortfolio(),
+      loadSettings(),
+    ])
+    
+    if (watchlistData) {
+      watchlist.importJson(JSON.stringify({ items: watchlistData }))
+    }
+    if (portfolioData) {
+      portfolio.importJson(JSON.stringify(portfolioData))
+    }
+    if (settingsData) {
+      if (settingsData.theme) settings.theme = settingsData.theme
+      if (settingsData.locale) settings.locale = settingsData.locale
+    }
+    
+    syncStatus.value = '✓ 加载成功'
+  } catch (e) {
+    syncStatus.value = '✗ 加载失败: ' + (e as Error).message
+  }
+  setTimeout(() => { syncStatus.value = null }, 3000)
+}
 
 function saveAI() {
   aiStore.save()
@@ -93,9 +146,8 @@ function clearCache() {
 
 function exportAll() {
   const data = {
-    version: 3,
+    version: 4,
     settings: settings.exportJson() ? JSON.parse(settings.exportJson()).settings : null,
-    sectors: JSON.parse(sectorStore.exportJson()),
     favorites: watchlist.items,
     portfolio: portfolio.holdings,
     quotes: Object.fromEntries(quotes.quotes),
@@ -152,10 +204,6 @@ function onAllFileSelected(e: Event) {
         settings.importJson(JSON.stringify({ settings: parsed.settings }))
         messages.push('设置')
       }
-      if (parsed.sectors) {
-        const result = sectorStore.importJson(JSON.stringify(parsed.sectors))
-        messages.push(`板块新增 ${result.added} / 合并 ${result.merged}`)
-      }
       if (Array.isArray(parsed.favorites)) {
         const result = watchlist.importJson(JSON.stringify({ items: parsed.favorites }))
         messages.push(`自选新增 ${result.added} / 跳过 ${result.merged}`)
@@ -182,6 +230,55 @@ function onAllFileSelected(e: Event) {
 <template>
   <div class="page">
     <h1>{{ t('settings.title') }}</h1>
+
+    <!-- 用户账户 -->
+    <section class="card section">
+      <h2>👤 用户账户</h2>
+      <div v-if="userStore.isLoggedIn" class="user-info">
+        <div class="user-profile">
+          <span class="user-avatar">{{ userStore.user?.nickname?.[0] || userStore.user?.userId?.[0] || '?' }}</span>
+          <div>
+            <div class="user-name">{{ userStore.user?.nickname || userStore.user?.userId }}</div>
+            <div class="user-id small muted">ID: {{ userStore.user?.userId }}</div>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="btn" @click="syncToCloud">☁️ 同步到云端</button>
+          <button class="btn" @click="loadFromCloud">📥 从云端加载</button>
+          <button class="btn ghost" @click="userStore.logout">退出登录</button>
+        </div>
+        <div v-if="syncStatus" class="sync-status" :class="syncStatus.startsWith('✓') ? 'pos' : 'neg'">
+          {{ syncStatus }}
+        </div>
+      </div>
+      <UserAuth v-else />
+    </section>
+
+    <!-- 环境变量配置 -->
+    <section class="card section">
+      <h2>⚙️ 环境变量配置</h2>
+      <p class="small muted">以下配置从服务器环境变量读取，如需修改请联系管理员。</p>
+      <div class="env-grid">
+        <div class="env-item">
+          <span class="env-label">MongoDB</span>
+          <span class="env-value" :class="runtimeConfig.config.mongo?.configured ? 'pos' : 'neg'">
+            {{ runtimeConfig.config.mongo?.configured ? '✓ 已配置' : '✗ 未配置' }}
+          </span>
+        </div>
+        <div class="env-item">
+          <span class="env-label">AI 模型</span>
+          <span class="env-value" :class="runtimeConfig.config.ai?.configured ? 'pos' : 'neg'">
+            {{ runtimeConfig.config.ai?.model || '未设置' }}
+          </span>
+        </div>
+        <div class="env-item">
+          <span class="env-label">站点密码</span>
+          <span class="env-value" :class="runtimeConfig.config.site?.hasPassword ? 'pos' : 'neg'">
+            {{ runtimeConfig.config.site?.hasPassword ? '✓ 已设置' : '✗ 未设置' }}
+          </span>
+        </div>
+      </div>
+    </section>
 
     <section class="card section">
       <h2>{{ t('settings.theme') }}</h2>
@@ -302,7 +399,6 @@ function onAllFileSelected(e: Event) {
         <span>报价缓存：{{ quotes.quotes.size }} 个</span>
         <span>自选股：{{ watchlist.items.length }} 只</span>
         <span>持仓：{{ portfolio.holdings.length }} 条</span>
-        <span>自定义板块：{{ sectorStore.customSectors.length }} 个</span>
       </div>
     </section>
 
@@ -350,4 +446,78 @@ function onAllFileSelected(e: Event) {
   margin-right: 4px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-info-bg);
+  color: var(--color-link);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: var(--fs-base);
+}
+
+.user-id {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+}
+
+.user-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.sync-status {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.env-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.env-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-md);
+}
+
+.env-label {
+  font-size: var(--fs-xs);
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.env-value {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
 </style>

@@ -1,7 +1,7 @@
 export default {
   app: {
-    title: 'AI Stock Dashboard',
-    subtitle: 'Global AI Supply Chain Research · Real-time Quotes',
+    title: 'AstroInvest',
+    subtitle: 'AI-Powered Stock Analysis & Mystic Stock Picking',
     loading: 'Loading…',
     error: 'Error',
     retry: 'Retry',
@@ -17,13 +17,7 @@ export default {
   },
   nav: {
     home: 'Overview',
-    chain: 'Supply Chain',
-    dsx: 'DSX Layers',
-    universe: 'Universe',
-    watchlist: 'Watchlist',
-    deepDive: 'Deep Dive',
     favorites: 'Favorites',
-    topics: 'Topics',
     ask: 'AI Ask',
     settings: 'Settings',
   },

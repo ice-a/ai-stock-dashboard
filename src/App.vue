@@ -1,26 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import WelcomeModal from './components/WelcomeModal.vue'
 import { useQuotesStore } from './stores/quotes'
 import { useRefreshStore } from './stores/refresh'
-import { useTopicStore } from './stores/topic'
+import { useWatchlistStore } from './stores/watchlist'
 import { useAutoRefresh } from './composables/useAutoRefresh'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
-const topicStore = useTopicStore()
+const watchlistStore = useWatchlistStore()
 const route = useRoute()
 
 const isPublicPage = computed(() => route.meta?.public === true)
 
 const initialSymbols = computed(() => {
-  const set = new Set<string>()
-  for (const i of topicStore.currentData.watchlistIdeas) set.add(i.symbol)
-  for (const s of topicStore.currentData.leaderUniverse) set.add(s.symbol)
-  return [...set].slice(0, 100)
+  return watchlistStore.items.map(item => item.symbol).slice(0, 100)
 })
 
 const enabled = computed(() => refreshStore.enabled)
@@ -33,11 +31,6 @@ const { refreshNow } = useAutoRefresh({
     if (isPublicPage.value) return
     if (initialSymbols.value.length === 0) return
     await quotesStore.fetchAndStore(initialSymbols.value, { force: false })
-    try {
-      const { useAlertsStore } = await import('./stores/alerts')
-      const alertsStore = useAlertsStore()
-      alertsStore.evaluateAll()
-    } catch { /* ignore */ }
   }
 })
 
@@ -49,11 +42,6 @@ useKeyboardShortcuts([
     action: () => refreshNow(),
   },
 ])
-
-watch(() => topicStore.activeId, () => {
-  quotesStore.clear()
-  refreshNow()
-})
 
 const bootstrapped = ref(false)
 
@@ -71,6 +59,16 @@ function scheduleInitialRefresh() {
 onMounted(() => {
   if (bootstrapped.value) return
   bootstrapped.value = true
+
+  // 清理旧的板块和主题数据
+  try {
+    localStorage.removeItem('ai-dashboard:sectors')
+    localStorage.removeItem('ai-dashboard:active-sector')
+    localStorage.removeItem('ai-dashboard:topics')
+    localStorage.removeItem('ai-dashboard:active-topic')
+    localStorage.removeItem('ai_sector_summary')
+  } catch { /* ignore */ }
+
   scheduleInitialRefresh()
 })
 
@@ -81,13 +79,14 @@ function handleRefresh() {
 
 <template>
   <div class="app">
+    <WelcomeModal />
     <AppHeader v-if="!isPublicPage" @refresh="handleRefresh" />
     <div class="layout" :class="{ public: isPublicPage }">
       <AppSidebar v-if="!isPublicPage" />
       <main class="main">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
-            <keep-alive :include="['HomeView', 'StockDetailView', 'SectorsView', 'SectorDetailView']">
+            <keep-alive :include="['HomeView', 'StockDetailView']">
               <component :is="Component" />
             </keep-alive>
           </transition>

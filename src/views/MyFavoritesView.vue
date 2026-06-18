@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useWatchlistStore } from '../stores/watchlist'
 import { useQuotesStore } from '../stores/quotes'
 import { useRefreshStore } from '../stores/refresh'
+import { useRatingStore } from '../stores/rating'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
-import { findLeader, findIdea } from '../utils/benchmarks'
 import { sourceManager } from '../api/sourceManager'
 import { analyzeStock, type StockAnalysis } from '../utils/analysis'
 import type { KLinePoint } from '../types'
@@ -21,6 +21,7 @@ const router = useRouter()
 const watchlistStore = useWatchlistStore()
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
+const ratingStore = useRatingStore()
 
 const search = ref('')
 const groupFilter = ref<string>('all')
@@ -31,10 +32,9 @@ const analysisMap = ref<Map<string, StockAnalysis>>(new Map())
 const enriched = computed(() => {
   return watchlistStore.items.map(item => ({
     ...item,
-    leader: findLeader(item.symbol),
-    idea: findIdea(item.symbol),
     quote: quotesStore.get(item.symbol),
     analysis: analysisMap.value.get(item.symbol),
+    rating: ratingStore.getRating(item.symbol),
   }))
 })
 
@@ -43,7 +43,7 @@ const filtered = computed(() => {
   return enriched.value.filter(item => {
     if (groupFilter.value !== 'all' && item.group !== groupFilter.value) return false
     if (q) {
-      const blob = `${item.symbol} ${item.note} ${item.leader?.name || ''} ${item.leader?.layer || ''}`.toLowerCase()
+      const blob = `${item.symbol} ${item.note}`.toLowerCase()
       if (!blob.includes(q)) return false
     }
     return true
@@ -59,6 +59,23 @@ const { refreshNow } = useAutoRefresh({
     await quotesStore.fetchAndStore(enriched.value.map(i => i.symbol))
   }
 })
+
+// 启动自动评级
+onMounted(() => {
+  ratingStore.startAutoRefresh()
+})
+
+onUnmounted(() => {
+  ratingStore.stopAutoRefresh()
+})
+
+// 评级颜色
+function ratingColor(rating: string | undefined) {
+  if (!rating) return 'var(--color-muted)'
+  if (rating === '买入' || rating === '增持') return 'var(--color-up)'
+  if (rating === '减持' || rating === '卖出') return 'var(--color-down)'
+  return 'var(--color-flat)'
+}
 
 async function loadAnalysis() {
   if (analysisLoading.value) return
@@ -110,13 +127,10 @@ const displayList = computed(() => {
 
 function exportCSV() {
   const rows = [
-    ['symbol', 'name', 'region', 'layer', 'group', 'note', 'targetPrice', 'addedAt', 'price', 'change',
+    ['symbol', 'group', 'note', 'targetPrice', 'addedAt', 'price', 'change',
      'score', 'trend', 'rsi', 'return1m', 'volatility', 'signals'],
     ...enriched.value.map(i => [
       i.symbol,
-      i.leader?.name || '',
-      i.leader?.region || '',
-      i.leader?.layer || '',
       i.group,
       (i.note || '').replace(/[\n,]/g, ' '),
       i.targetPrice ?? '',
@@ -151,9 +165,19 @@ function exportCSV() {
           <span v-if="analysisLoading" class="spinner"></span>
           {{ showAnalysis ? '关闭分析' : '多维度分析' }}
         </button>
+        <button class="btn" @click="ratingStore.refreshRatings()" :disabled="ratingStore.loading">
+          <span v-if="ratingStore.loading" class="spinner"></span>
+          {{ ratingStore.loading ? 'AI 评级中...' : '刷新评级' }}
+        </button>
         <button class="btn" @click="exportCSV">导出 CSV</button>
       </div>
     </header>
+
+    <!-- 评级状态 -->
+    <div v-if="ratingStore.lastUpdate" class="rating-status small muted">
+      AI 评级更新时间：{{ new Date(ratingStore.lastUpdate).toLocaleString('zh-CN') }}
+      <span v-if="ratingStore.error" class="error"> | {{ ratingStore.error }}</span>
+    </div>
 
     <div class="toolbar">
       <input v-model="search" type="search" placeholder="搜索代码、备注、层级..." class="search" />
@@ -175,14 +199,14 @@ function exportCSV() {
             <div class="row1">
               <router-link :to="`/stock/${encodeURIComponent(item.symbol)}`" class="symbol-link">{{ item.symbol }}</router-link>
               <span class="tag-light">{{ item.group }}</span>
+              <span v-if="item.rating" class="rating-badge" :style="{ color: ratingColor(item.rating.rating) }">
+                {{ item.rating.rating }}
+              </span>
               <span v-if="item.analysis" class="score-mini" :style="{ color: item.analysis.score >= 60 ? 'var(--color-up)' : item.analysis.score >= 40 ? 'var(--color-flat)' : 'var(--color-down)' }">
                 {{ item.analysis.score }}分
               </span>
             </div>
-            <h3 class="name">{{ item.leader?.name || item.idea?.name || item.symbol }}</h3>
-            <div class="meta small muted">
-              <span v-if="item.leader">{{ item.leader.region }} · {{ item.leader.layer }}</span>
-            </div>
+            <h3 class="name">{{ item.symbol }}</h3>
           </div>
           <div class="quote-area">
             <div class="price">
@@ -197,7 +221,12 @@ function exportCSV() {
             <ExternalLinks :symbol="item.symbol" />
           </div>
         </div>
-        <div v-if="item.targetPrice || item.note" class="fav-body">
+        <div v-if="item.targetPrice || item.note || item.rating" class="fav-body">
+          <div v-if="item.rating" class="rating-detail">
+            <span class="small muted">AI 建议</span>
+            <span class="rating-reason">{{ item.rating.reason }}</span>
+            <span v-if="item.rating.risk" class="rating-risk">风险：{{ item.rating.risk }}</span>
+          </div>
           <div v-if="item.targetPrice" class="target">
             <span class="small muted">目标价</span>
             <strong>{{ item.targetPrice }}</strong>
@@ -327,6 +356,33 @@ function exportCSV() {
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }
 .flat { color: var(--color-flat); }
+.rating-badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+}
+.rating-status {
+  margin-bottom: var(--space-2);
+}
+.rating-status .error {
+  color: var(--color-down);
+}
+.rating-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+.rating-reason {
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+.rating-risk {
+  color: var(--color-down);
+  font-size: var(--fs-xs);
+}
 .note {
   font-size: var(--fs-sm);
   color: var(--color-ink-soft);

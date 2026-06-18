@@ -2,7 +2,32 @@
 // 默认只加载可验证的数据源；AI 投资建议由用户手动触发。
 
 import { parseLongportSymbol } from './symbolMap'
-import type { StockNews, StockAnnouncement, ETFHolding, Market } from '../sectors/types'
+import type { Market } from '../types'
+
+export interface StockNews {
+  title: string
+  source: string
+  time: string
+  url: string
+  summary?: string
+  generatedByAI?: boolean
+}
+
+export interface StockAnnouncement {
+  title: string
+  time: string
+  url: string
+  type?: string
+  generatedByAI?: boolean
+}
+
+export interface ETFHolding {
+  etfSymbol: string
+  etfName: string
+  weight?: number
+  market: Market
+  generatedByAI?: boolean
+}
 import { APP_API_ROUTES } from '../config/endpoints'
 import { useAIStore } from '../stores/ai'
 
@@ -193,10 +218,18 @@ export async function fetchStockAdviceAI(
   name: string,
   market: Market,
   klinePoints: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>,
+  customPrompt?: string,
 ): Promise<AIAdvice | null> {
   const ai = useAIStore()
   if (!ai.isConfigured) {
     throw new Error('请先在设置页配置 AI Base URL、API Key 和模型。')
+  }
+
+  // 检查 API 调用次数
+  const { useUserStore } = await import('../stores/user')
+  const userStore = useUserStore()
+  if (userStore.isLoggedIn && userStore.apiCallsRemaining <= 0) {
+    throw new Error('AI 调用次数已用完，请升级或等待重置。')
   }
 
   // 构建 K 线摘要
@@ -220,6 +253,9 @@ export async function fetchStockAdviceAI(
 - 最新成交量: ${latest.volume}, 平均成交量: ${avgVol.toFixed(0)}`
   }
 
+  // 使用自定义提示词或默认提示词
+  const systemPrompt = customPrompt || '你是专业的股票分析师，只输出 JSON，不要有其他文字。'
+  
   const prompt = `你是一位专业的股票分析师。请基于以下信息为该股票生成投资建议。
 
 股票代码: ${symbol}
@@ -245,7 +281,7 @@ ${klineSummary}
   const { chat } = await import('./ai')
   const resp = await chat(
     [
-      { role: 'system', content: '你是专业的股票分析师，只输出 JSON，不要有其他文字。' },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ],
     {
@@ -261,7 +297,14 @@ ${klineSummary}
   const jsonText = extractJsonObject(text)
   if (!jsonText) throw new Error('AI 返回格式错误：没有找到 JSON 对象。请稍后重试或切换模型。')
   try {
-    return normalizeAdvice(JSON.parse(jsonText) as Partial<AIAdvice>, klinePoints.at(-1)?.close ?? null)
+    const result = normalizeAdvice(JSON.parse(jsonText) as Partial<AIAdvice>, klinePoints.at(-1)?.close ?? null)
+    
+    // AI 调用成功，消耗次数
+    if (userStore.isLoggedIn) {
+      await userStore.consumeApiCall()
+    }
+    
+    return result
   } catch {
     throw new Error('AI 返回格式错误：JSON 解析失败。请稍后重试或切换模型。')
   }

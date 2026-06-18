@@ -1,7 +1,7 @@
 export default {
   app: {
-    title: 'AI 股票数据看板',
-    subtitle: '全球 AI 底层供应链股票研究 · 实时行情',
+    title: '星盘智投',
+    subtitle: 'AI驱动的智能股票分析与玄学选股',
     loading: '加载中…',
     error: '出错了',
     retry: '重试',
@@ -17,13 +17,7 @@ export default {
   },
   nav: {
     home: '概览',
-    chain: '产业链',
-    dsx: 'DSX 六层',
-    universe: '公司池',
-    watchlist: '观察名单',
-    deepDive: '逐股研究',
     favorites: '自选股',
-    topics: '主题库',
     ask: 'AI 问答',
     settings: '设置',
   },

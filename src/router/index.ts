@@ -16,16 +16,10 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '访问验证', public: true }
   },
   {
-    path: '/sectors',
-    name: 'sectors',
-    component: () => import('../views/SectorsView.vue'),
-    meta: { title: '板块选择' }
-  },
-  {
-    path: '/sector/:id',
-    name: 'sector-detail',
-    component: () => import('../views/SectorDetailView.vue'),
-    meta: { title: '板块详情' }
+    path: '/user',
+    name: 'user',
+    component: () => import('../views/UserView.vue'),
+    meta: { title: '用户中心' }
   },
   {
     path: '/stock/:symbol',
@@ -46,22 +40,10 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人持仓' }
   },
   {
-    path: '/alerts',
-    name: 'alerts',
-    component: () => import('../views/AlertsView.vue'),
-    meta: { title: '预警中心' }
-  },
-  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('../views/MyFavoritesView.vue'),
     meta: { title: '自选股' }
-  },
-  {
-    path: '/ask',
-    name: 'ask',
-    component: () => import('../views/AskView.vue'),
-    meta: { title: 'AI 问答' }
   },
   {
     path: '/mystic',
@@ -75,12 +57,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/SettingsView.vue'),
     meta: { title: '设置' }
   },
-  { path: '/chain', redirect: '/sectors' },
-  { path: '/dsx', redirect: '/' },
-  { path: '/universe', redirect: '/sectors' },
   { path: '/watchlist', redirect: '/favorites' },
   { path: '/deep-dive', redirect: '/favorites' },
-  { path: '/topics', redirect: '/sectors' },
   { path: '/research', redirect: '/' },
   { path: '/compare', redirect: '/' },
   { path: '/:pathMatch(.*)*', redirect: '/' }

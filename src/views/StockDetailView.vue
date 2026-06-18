@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useQuotesStore } from '../stores/quotes'
 import { useWatchlistStore } from '../stores/watchlist'
-import { useSectorStore } from '../stores/sector'
 import { useRefreshStore } from '../stores/refresh'
 import { useAIStore } from '../stores/ai'
 import { useAutoRefresh } from '../composables/useAutoRefresh'
@@ -15,9 +14,11 @@ import { formatDate, formatPrice, formatPercent, formatVolume, quoteTone, timeAg
 import PriceTicker from '../components/PriceTicker.vue'
 import WatchlistButton from '../components/WatchlistButton.vue'
 import ExternalLinks from '../components/ExternalLinks.vue'
+import StockRating from '../components/StockRating.vue'
 import { markdownToText, renderMarkdown } from '../utils/markdown'
-import type { KLinePoint } from '../types'
-import type { Market } from '../sectors/types'
+import { chat } from '../api/ai'
+import { buildRatingPrompt, type StockAnalysisContext } from '../prompts/stockAnalysis'
+import type { KLinePoint, Market } from '../types'
 
 const KLineChart = defineAsyncComponent(() => import('../components/KLineChart.vue'))
 const StockInsightCharts = defineAsyncComponent(() => import('../components/StockInsightCharts.vue'))
@@ -27,25 +28,27 @@ const router = useRouter()
 const { t } = useI18n()
 const quotesStore = useQuotesStore()
 const watchlistStore = useWatchlistStore()
-const sectorStore = useSectorStore()
 const refreshStore = useRefreshStore()
 const aiStore = useAIStore()
 
 const symbol = computed(() => decodeURIComponent(String(route.params.symbol || '')))
 const klineRange = ref('6mo')
-const activeTab = ref<'kline' | 'news' | 'announcements' | 'etfs'>('kline')
+const activeTab = ref<'kline' | 'news' | 'announcements' | 'etfs' | 'rating'>('kline')
 
-// 从板块系统查找股票信息
-const sectorStock = computed(() => {
-  for (const sector of sectorStore.sectors) {
-    const found = sector.stocks.find(s => s.symbol === symbol.value)
-    if (found) return { ...found, sectorName: sector.name, sectorId: sector.id }
-  }
-  return null
-})
+// 评级相关
+const ratingData = ref<any>(null)
+const ratingLoading = ref(false)
+const ratingError = ref<string | null>(null)
 
-const stockName = computed(() => sectorStock.value?.name || symbol.value)
-const stockMarket = computed<Market>(() => (sectorStock.value?.market as Market) || '美股')
+function detectMarketFromSymbol(sym: string): Market {
+  if (sym.endsWith('.US')) return '美股'
+  if (sym.endsWith('.HK')) return '港股'
+  if (sym.endsWith('.SH') || sym.endsWith('.SZ')) return 'A股'
+  return '美股'
+}
+
+const stockName = computed(() => quote.value?.shortName || quote.value?.name || symbol.value)
+const stockMarket = computed<Market>(() => detectMarketFromSymbol(symbol.value))
 
 const quote = computed(() => quotesStore.get(symbol.value))
 const favorite = computed(() => watchlistStore.bySymbol.get(symbol.value))
@@ -114,13 +117,21 @@ async function loadDetail() {
 // 手动触发 AI 投资建议生成
 const adviceGenerating = ref(false)
 const adviceError = ref<string | null>(null)
+const customPrompt = ref('')
+const showCustomPrompt = ref(false)
 
 async function generateAdvice() {
   if (!symbol.value || adviceGenerating.value) return
   adviceGenerating.value = true
   adviceError.value = null
   try {
-    const advice = await fetchStockAdviceAI(symbol.value, stockName.value, stockMarket.value, klinePoints.value)
+    const advice = await fetchStockAdviceAI(
+      symbol.value, 
+      stockName.value, 
+      stockMarket.value, 
+      klinePoints.value,
+      customPrompt.value || undefined
+    )
     if (!advice) throw new Error('AI 未返回有效投资建议，请稍后重试。')
     if (detail.value) {
       detail.value.advice = advice
@@ -250,9 +261,7 @@ const tabs = [
 <template>
   <div class="page" v-if="symbol">
     <div class="crumb small muted">
-      <router-link to="/sectors">板块</router-link>
-      <span v-if="sectorStock"> / </span>
-      <router-link v-if="sectorStock" :to="`/sector/${sectorStock.sectorId}`">{{ sectorStock.sectorName }}</router-link>
+      <router-link to="/">首页</router-link>
       <span> / </span>
       <span>{{ stockName }}</span>
     </div>
@@ -269,10 +278,8 @@ const tabs = [
             <h2 class="name">{{ stockName }}</h2>
             <ExternalLinks :symbol="symbol" />
           </div>
-          <div v-if="sectorStock" class="meta-tags">
-            <span class="tag-light">{{ sectorStock.market }}</span>
-            <span v-if="sectorStock.layer" class="tag-light">{{ sectorStock.layer }}</span>
-            <span class="tag-light">{{ sectorStock.sectorName }}</span>
+          <div class="meta-tags">
+            <span class="tag-light">{{ stockMarket }}</span>
           </div>
         </div>
         <div class="right">
@@ -434,11 +441,29 @@ const tabs = [
     <section class="ai-advice card">
       <div class="advice-header">
         <h2>AI 投资建议</h2>
-        <button v-if="aiStore.isConfigured && !detail?.advice"
-                class="btn primary" :disabled="adviceGenerating" @click="generateAdvice">
-          <span v-if="adviceGenerating" class="spinner"></span>
-          {{ adviceGenerating ? 'AI 分析中…' : '生成投资建议' }}
-        </button>
+        <div class="advice-actions">
+          <button class="btn ghost small" @click="showCustomPrompt = !showCustomPrompt">
+            {{ showCustomPrompt ? '隐藏提示词' : '自定义提示词' }}
+          </button>
+          <button v-if="aiStore.isConfigured && !detail?.advice"
+                  class="btn primary" :disabled="adviceGenerating" @click="generateAdvice">
+            <span v-if="adviceGenerating" class="spinner"></span>
+            {{ adviceGenerating ? 'AI 分析中…' : '生成投资建议' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 自定义提示词 -->
+      <div v-if="showCustomPrompt" class="custom-prompt-section">
+        <div class="form-group">
+          <label>自定义系统提示词</label>
+          <textarea 
+            v-model="customPrompt" 
+            placeholder="留空使用默认提示词&#10;&#10;自定义示例：&#10;你是一位专注于价值投资的分析师，请从基本面、估值、护城河等角度分析。"
+            rows="4"
+          ></textarea>
+          <span class="form-hint small muted">自定义提示词会影响 AI 的分析风格和角度</span>
+        </div>
       </div>
 
       <template v-if="detail?.advice">
@@ -678,6 +703,39 @@ const tabs = [
 .tab-content { margin-bottom: var(--space-5); }
 .tab-content h2 { margin: 0 0 var(--space-3); }
 
+.rating-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.rating-header h2 {
+  margin: 0;
+}
+
+.error-message {
+  padding: var(--space-3);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--color-down);
+  margin-bottom: var(--space-4);
+}
+
+.alert {
+  padding: var(--space-3);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  color: #b45309;
+  margin-bottom: var(--space-4);
+}
+
+.alert a {
+  color: var(--color-link);
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -794,10 +852,45 @@ const tabs = [
 .advice-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
 .advice-header h2 { margin: 0; }
+.advice-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.custom-prompt-section {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-md);
+}
+.custom-prompt-section .form-group {
+  margin-bottom: 0;
+}
+.custom-prompt-section textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  resize: vertical;
+}
+.custom-prompt-section textarea:focus {
+  outline: none;
+  border-color: var(--color-link);
+  box-shadow: 0 0 0 2px var(--color-info-bg);
+}
+.form-hint {
+  display: block;
+  margin-top: var(--space-1);
+}
 .advice-badge {
   padding: 3px 12px;
   border-radius: 999px;
