@@ -55,7 +55,7 @@ export async function westockSearch(keyword: string): Promise<Array<{
   return results
 }
 
-// 查询实时行情
+// 查询实时行情（使用 kline 最新一条数据）
 export async function westockQuote(symbol: string): Promise<{
   symbol: string
   name: string
@@ -68,26 +68,36 @@ export async function westockQuote(symbol: string): Promise<{
   open: number
   prevClose: number
 } | null> {
-  const output = await execWestock('quote', [symbol])
-  
-  // 解析输出格式
-  const lines = output.split('\n').filter(line => line.includes('|'))
-  if (lines.length < 2) return null
+  try {
+    const output = await execWestock('kline', [symbol, '--period', 'day', '--limit', '2'])
+    
+    // 解析输出格式
+    const lines = output.split('\n').filter(line => line.includes('|'))
+    if (lines.length < 3) return null
 
-  const cols = lines[1].split('|').map(c => c.trim()).filter(Boolean)
-  if (cols.length < 8) return null
+    // 最新数据在第2行（第1行是表头）
+    const cols = lines[1].split('|').map(c => c.trim()).filter(Boolean)
+    if (cols.length < 6) return null
 
-  return {
-    symbol: cols[0] || symbol,
-    name: cols[1] || '',
-    price: parseFloat(cols[2]) || 0,
-    change: parseFloat(cols[3]) || 0,
-    changePercent: parseFloat(cols[4]) || 0,
-    volume: parseFloat(cols[5]) || 0,
-    high: parseFloat(cols[6]) || 0,
-    low: parseFloat(cols[7]) || 0,
-    open: parseFloat(cols[8]) || 0,
-    prevClose: parseFloat(cols[9]) || 0,
+    const price = parseFloat(cols[2]) || 0  // last
+    const prevClose = parseFloat(cols[1]) || 0  // open (近似)
+    const change = price - prevClose
+    const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0
+
+    return {
+      symbol,
+      name: '',
+      price,
+      change,
+      changePercent,
+      volume: parseFloat(cols[5]) || 0,
+      high: parseFloat(cols[3]) || 0,
+      low: parseFloat(cols[4]) || 0,
+      open: parseFloat(cols[1]) || 0,
+      prevClose,
+    }
+  } catch {
+    return null
   }
 }
 
