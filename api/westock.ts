@@ -18,17 +18,29 @@ function emSecid(symbol: string): string {
 // 搜索股票
 async function searchStocks(keyword: string): Promise<any[]> {
   try {
-    const url = `${EASTMONEY_SEARCH_URL}?input=${encodeURIComponent(keyword)}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10`
+    // 使用 encodeURIComponent 正确编码中文
+    const encodedKeyword = encodeURIComponent(keyword)
+    const url = `${EASTMONEY_SEARCH_URL}?input=${encodedKeyword}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10`
+    
     const response = await fetch(url, {
       headers: {
         'Referer': 'https://quote.eastmoney.com/',
-        'User-Agent': 'Mozilla/5.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+        'Accept-Charset': 'utf-8',
       },
     })
     
     if (!response.ok) return []
     
-    const json = await response.json() as any
+    const text = await response.text()
+    let json: any
+    try {
+      json = JSON.parse(text)
+    } catch {
+      return []
+    }
+    
     const data = json?.QuotationCodeTable?.Data || []
     
     // 使用 Classify 字段过滤，支持所有股票类型
