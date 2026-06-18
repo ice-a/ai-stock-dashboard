@@ -12,7 +12,6 @@ import { useRuntimeConfigStore } from '../stores/runtimeConfig'
 import { listModels, type ModelInfo } from '../api/ai'
 import { EXTERNAL_ENDPOINTS } from '../config/endpoints'
 import { setLocale, type Locale } from '../i18n'
-import UserAuth from '../components/UserAuth.vue'
 import { syncWatchlist, syncPortfolio, syncSettings, loadWatchlist, loadPortfolio, loadSettings } from '../api/userSync'
 
 const { t } = useI18n()
@@ -43,7 +42,6 @@ onMounted(() => {
   }
 })
 
-// 同步数据到云端
 async function syncToCloud() {
   syncStatus.value = '同步中...'
   try {
@@ -53,42 +51,27 @@ async function syncToCloud() {
       syncSettings({
         theme: settings.theme,
         locale: settings.locale,
-        enabled: settings.enabled,
-        listInterval: settings.listInterval,
-        detailInterval: settings.detailInterval,
       }),
     ])
     syncStatus.value = '✓ 同步成功'
   } catch (e) {
-    syncStatus.value = '✗ 同步失败: ' + (e as Error).message
+    syncStatus.value = '✗ 同步失败'
   }
   setTimeout(() => { syncStatus.value = null }, 3000)
 }
 
-// 从云端加载数据
 async function loadFromCloud() {
   syncStatus.value = '加载中...'
   try {
-    const [watchlistData, portfolioData, settingsData] = await Promise.all([
+    const [watchlistData, portfolioData] = await Promise.all([
       loadWatchlist(),
       loadPortfolio(),
-      loadSettings(),
     ])
-    
-    if (watchlistData) {
-      watchlist.importJson(JSON.stringify({ items: watchlistData }))
-    }
-    if (portfolioData) {
-      portfolio.importJson(JSON.stringify(portfolioData))
-    }
-    if (settingsData) {
-      if (settingsData.theme) settings.theme = settingsData.theme
-      if (settingsData.locale) settings.locale = settingsData.locale
-    }
-    
+    if (watchlistData) watchlist.importJson(JSON.stringify({ items: watchlistData }))
+    if (portfolioData) portfolio.importJson(JSON.stringify(portfolioData))
     syncStatus.value = '✓ 加载成功'
   } catch (e) {
-    syncStatus.value = '✗ 加载失败: ' + (e as Error).message
+    syncStatus.value = '✗ 加载失败'
   }
   setTimeout(() => { syncStatus.value = null }, 3000)
 }
@@ -109,118 +92,63 @@ async function refreshModels() {
     const list = await listModels(aiStore.baseUrl, aiStore.apiKey)
     modelList.value = list
     aiStore.setAvailableModels(list)
-    if (!aiStore.model && list.length > 0) {
-      aiStore.setModel(list[0].id)
-    }
+    if (!aiStore.model && list.length > 0) aiStore.setModel(list[0].id)
     modelTestResult.value = `✓ 拉取到 ${list.length} 个模型`
   } catch (e) {
-    modelTestResult.value = `✗ ${(e as Error).message}`
+    modelTestResult.value = '✗ 拉取失败: ' + (e as Error).message
   } finally {
     modelLoading.value = false
   }
 }
 
-function onThemeChange(m: 'light' | 'dark' | 'system') {
-  settings.setTheme(m)
-}
-function onLocaleChange(l: Locale) {
-  setLocale(l)
-  settings.setLocale(l)
-}
-function onListIntervalChange(e: Event) {
-  const v = Number((e.target as HTMLSelectElement).value)
-  settings.listInterval = v
-  refresh.setListInterval(v)
-}
-function onDetailIntervalChange(e: Event) {
-  const v = Number((e.target as HTMLSelectElement).value)
-  settings.detailInterval = v
-  refresh.setDetailInterval(v)
+function onThemeChange(theme: 'light' | 'dark' | 'system') {
+  settings.theme = theme
+  document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches))
 }
 
-function clearCache() {
-  quotes.clear()
-  modelTestResult.value = '✓ 缓存已清除'
-  setTimeout(() => { modelTestResult.value = null }, 2000)
+function onLocaleChange(locale: Locale) {
+  settings.locale = locale
+  setLocale(locale)
 }
 
-function exportAll() {
+function exportData() {
   const data = {
     version: 4,
-    settings: settings.exportJson() ? JSON.parse(settings.exportJson()).settings : null,
     favorites: watchlist.items,
-    portfolio: portfolio.holdings,
-    quotes: Object.fromEntries(quotes.quotes),
-    ai: { baseUrl: aiStore.baseUrl, model: aiStore.model },
+    portfolio: { holdings: portfolio.holdings, transactions: portfolio.transactions },
     exportedAt: new Date().toISOString(),
   }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ai-dashboard-backup-${new Date().toISOString().slice(0,10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function exportFavorites() {
-  const blob = new Blob([watchlist.exportJson()], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `favorites-${new Date().toISOString().slice(0,10)}.json`
+  a.download = `backup-${new Date().toISOString().slice(0,10)}.json`
   a.click()
   URL.revokeObjectURL(url)
 }
 
 const fileInput = ref<HTMLInputElement | null>(null)
-const allFileInput = ref<HTMLInputElement | null>(null)
-function importFavorites() {
+function importData() {
   fileInput.value?.click()
-}
-function importAll() {
-  allFileInput.value?.click()
 }
 function onFileSelected(e: Event) {
   const file = (e.target as HTMLInputElement)?.files?.[0]
   if (!file) return
   const reader = new FileReader()
   reader.onload = () => {
-    const result = watchlist.importJson(String(reader.result || ''))
-    modelTestResult.value = `✓ 导入完成：新增 ${result.added}，合并 ${result.merged}`
-  }
-  reader.readAsText(file)
-}
-function onAllFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => {
     try {
       const parsed = JSON.parse(String(reader.result || '{}'))
-      let messages: string[] = []
-      if (parsed.settings) {
-        settings.importJson(JSON.stringify({ settings: parsed.settings }))
-        messages.push('设置')
-      }
+      let count = 0
       if (Array.isArray(parsed.favorites)) {
-        const result = watchlist.importJson(JSON.stringify({ items: parsed.favorites }))
-        messages.push(`自选新增 ${result.added} / 跳过 ${result.merged}`)
+        watchlist.importJson(JSON.stringify({ items: parsed.favorites }))
+        count += parsed.favorites.length
       }
-      if (Array.isArray(parsed.portfolio)) {
-        const result = portfolio.importJson(JSON.stringify({ holdings: parsed.portfolio }))
-        messages.push(`持仓新增 ${result.added} / 跳过 ${result.merged}`)
+      if (parsed.portfolio) {
+        portfolio.importJson(JSON.stringify(parsed.portfolio))
       }
-      if (parsed.quotes && typeof parsed.quotes === 'object') {
-        quotes.setMany(Object.values(parsed.quotes) as any)
-        messages.push('报价缓存')
-      }
-      modelTestResult.value = messages.length ? `✓ 导入完成：${messages.join('，')}` : '✗ 未识别的备份文件'
-    } catch (err) {
-      modelTestResult.value = `✗ ${(err as Error).message}`
-    } finally {
-      input.value = ''
+      modelTestResult.value = `✓ 导入成功`
+    } catch {
+      modelTestResult.value = '✗ 导入失败'
     }
   }
   reader.readAsText(file)
@@ -228,36 +156,157 @@ function onAllFileSelected(e: Event) {
 </script>
 
 <template>
-  <div class="page">
-    <h1>{{ t('settings.title') }}</h1>
+  <div class="page settings-page">
+    <h1>⚙️ 设置</h1>
 
-    <!-- 用户账户 -->
-    <section class="card section">
-      <h2>👤 用户账户</h2>
-      <div v-if="userStore.isLoggedIn" class="user-info">
-        <div class="user-profile">
-          <span class="user-avatar">{{ userStore.user?.nickname?.[0] || userStore.user?.userId?.[0] || '?' }}</span>
-          <div>
-            <div class="user-name">{{ userStore.user?.nickname || userStore.user?.userId }}</div>
-            <div class="user-id small muted">ID: {{ userStore.user?.userId }}</div>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="btn" @click="syncToCloud">☁️ 同步到云端</button>
-          <button class="btn" @click="loadFromCloud">📥 从云端加载</button>
-          <button class="btn ghost" @click="userStore.logout">退出登录</button>
-        </div>
-        <div v-if="syncStatus" class="sync-status" :class="syncStatus.startsWith('✓') ? 'pos' : 'neg'">
-          {{ syncStatus }}
+    <!-- 外观 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">🎨</span>
+        <h3>外观</h3>
+      </div>
+      <div class="setting-row">
+        <label>主题</label>
+        <div class="theme-options">
+          <button v-for="m in ['light', 'dark', 'system']" :key="m" 
+                  :class="{ active: settings.theme === m }" 
+                  @click="onThemeChange(m as any)">
+            {{ m === 'light' ? '☀️ 浅色' : m === 'dark' ? '🌙 深色' : '🖥 跟随系统' }}
+          </button>
         </div>
       </div>
-      <UserAuth v-else />
+      <div class="setting-row">
+        <label>语言</label>
+        <div class="theme-options">
+          <button :class="{ active: settings.locale === 'zh-CN' }" @click="onLocaleChange('zh-CN')">中文</button>
+          <button :class="{ active: settings.locale === 'en-US' }" @click="onLocaleChange('en-US')">English</button>
+        </div>
+      </div>
     </section>
 
-    <!-- 环境变量配置 -->
-    <section class="card section">
-      <h2>⚙️ 环境变量配置</h2>
-      <p class="small muted">以下配置从服务器环境变量读取，如需修改请联系管理员。</p>
+    <!-- AI 配置 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">🤖</span>
+        <div>
+          <h3>AI 模型</h3>
+          <p class="small muted">支持 OpenAI 兼容接口</p>
+        </div>
+      </div>
+      <div v-if="aiStore.serverManaged" class="managed-banner">
+        当前 AI 由服务端托管：{{ runtimeConfig.config.ai.model }}
+      </div>
+      <div class="setting-row">
+        <label>Base URL</label>
+        <input v-model="aiStore.baseUrl" type="text" :placeholder="EXTERNAL_ENDPOINTS.openai.baseUrl" />
+      </div>
+      <div class="setting-row">
+        <label>API Key</label>
+        <input v-model="aiStore.apiKey" type="password" placeholder="sk-..." />
+      </div>
+      <div class="setting-row">
+        <label>模型</label>
+        <select v-model="aiStore.model">
+          <option v-if="!aiStore.model && !allModels.length" value="">请先拉取列表</option>
+          <option v-for="m in allModels" :key="m.id" :value="m.id">{{ m.id }}</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Temperature</label>
+        <input v-model.number="aiStore.temperature" type="number" min="0" max="2" step="0.1" />
+      </div>
+      <div class="setting-actions">
+        <button class="btn primary" @click="saveAI">保存</button>
+        <button class="btn" :disabled="modelLoading" @click="refreshModels">
+          {{ modelLoading ? '拉取中...' : '拉取模型列表' }}
+        </button>
+        <span v-if="modelTestResult" class="test-result" :class="modelTestResult.startsWith('✓') ? 'pos' : 'neg'">
+          {{ modelTestResult }}
+        </span>
+      </div>
+    </section>
+
+    <!-- 刷新设置 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">🔄</span>
+        <h3>自动刷新</h3>
+      </div>
+      <div class="setting-row">
+        <label>启用自动刷新</label>
+        <label class="switch">
+          <input type="checkbox" :checked="settings.enabled" @change="(e) => { settings.enabled = (e.target as HTMLInputElement).checked; refresh.setEnabled((e.target as HTMLInputElement).checked) }" />
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <label>列表刷新间隔</label>
+        <select :value="settings.listInterval" @change="(e) => { settings.listInterval = Number((e.target as HTMLSelectElement).value); refresh.setListInterval(Number((e.target as HTMLSelectElement).value)) }">
+          <option v-for="v in [30, 60, 120, 300]" :key="v" :value="v">{{ v }} 秒</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>详情刷新间隔</label>
+        <select :value="settings.detailInterval" @change="(e) => { settings.detailInterval = Number((e.target as HTMLSelectElement).value); refresh.setDetailInterval(Number((e.target as HTMLSelectElement).value)) }">
+          <option v-for="v in [5, 15, 30, 60]" :key="v" :value="v">{{ v }} 秒</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- 数据同步 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">☁️</span>
+        <div>
+          <h3>数据同步</h3>
+          <p class="small muted">{{ userStore.isLoggedIn ? '已登录' : '登录后可同步数据' }}</p>
+        </div>
+      </div>
+      <div v-if="userStore.isLoggedIn" class="setting-actions">
+        <button class="btn" @click="syncToCloud">☁️ 同步到云端</button>
+        <button class="btn" @click="loadFromCloud">📥 从云端加载</button>
+        <span v-if="syncStatus" class="status-msg" :class="syncStatus.startsWith('✓') ? 'pos' : 'neg'">
+          {{ syncStatus }}
+        </span>
+      </div>
+      <div v-else>
+        <router-link to="/user" class="btn primary">前往登录</router-link>
+      </div>
+    </section>
+
+    <!-- 数据管理 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">💾</span>
+        <h3>数据管理</h3>
+      </div>
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-value">{{ quotes.quotes.size }}</span>
+          <span class="stat-label small muted">报价缓存</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ watchlist.items.length }}</span>
+          <span class="stat-label small muted">自选股</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ portfolio.holdings.length }}</span>
+          <span class="stat-label small muted">持仓</span>
+        </div>
+      </div>
+      <div class="setting-actions">
+        <button class="btn" @click="exportData">📤 导出数据</button>
+        <button class="btn" @click="importData">📥 导入数据</button>
+        <input ref="fileInput" type="file" accept=".json" style="display:none" @change="onFileSelected" />
+      </div>
+    </section>
+
+    <!-- 环境变量 -->
+    <section class="settings-section card">
+      <div class="section-header">
+        <span class="section-icon">🔧</span>
+        <h3>服务配置</h3>
+      </div>
       <div class="env-grid">
         <div class="env-item">
           <span class="env-label">MongoDB</span>
@@ -268,7 +317,7 @@ function onAllFileSelected(e: Event) {
         <div class="env-item">
           <span class="env-label">AI 模型</span>
           <span class="env-value" :class="runtimeConfig.config.ai?.configured ? 'pos' : 'neg'">
-            {{ runtimeConfig.config.ai?.model || '未设置' }}
+            {{ runtimeConfig.config.ai?.configured ? '✓ 已配置' : '✗ 未配置' }}
           </span>
         </div>
         <div class="env-item">
@@ -279,245 +328,215 @@ function onAllFileSelected(e: Event) {
         </div>
       </div>
     </section>
-
-    <section class="card section">
-      <h2>{{ t('settings.theme') }}</h2>
-      <div class="theme-options">
-        <label v-for="m in ['light', 'dark', 'system']" :key="m" class="radio-card" :class="{ active: settings.theme === m }">
-          <input type="radio" name="theme" :value="m" :checked="settings.theme === m" @change="onThemeChange(m as any)" />
-          <span class="icon">
-            <template v-if="m === 'light'">☀️</template>
-            <template v-else-if="m === 'dark'">🌙</template>
-            <template v-else>🖥</template>
-          </span>
-          <span class="label">
-            {{ m === 'light' ? t('settings.themeLight') : m === 'dark' ? t('settings.themeDark') : t('settings.themeSystem') }}
-          </span>
-        </label>
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>{{ t('settings.language') }}</h2>
-      <div class="theme-options">
-        <label class="radio-card" :class="{ active: settings.locale === 'zh-CN' }">
-          <input type="radio" name="locale" value="zh-CN" :checked="settings.locale === 'zh-CN'" @change="onLocaleChange('zh-CN')" />
-          <span class="icon">中</span>
-          <span class="label">简体中文</span>
-        </label>
-        <label class="radio-card" :class="{ active: settings.locale === 'en-US' }">
-          <input type="radio" name="locale" value="en-US" :checked="settings.locale === 'en-US'" @change="onLocaleChange('en-US')" />
-          <span class="icon">EN</span>
-          <span class="label">English</span>
-        </label>
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>{{ t('refresh.title') }}</h2>
-      <div class="form-row">
-        <label class="switch">
-          <input type="checkbox" :checked="settings.enabled" @change="(e) => { settings.enabled = (e.target as HTMLInputElement).checked; refresh.setEnabled((e.target as HTMLInputElement).checked) }" />
-          <span>{{ t('refresh.enabled') }}</span>
-        </label>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">{{ t('refresh.listInterval') }}</label>
-        <select :value="settings.listInterval" @change="onListIntervalChange">
-          <option v-for="v in [30, 60, 120, 300]" :key="v" :value="v">{{ v }} {{ t('refresh.seconds') }}</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">{{ t('refresh.detailInterval') }}</label>
-        <select :value="settings.detailInterval" @change="onDetailIntervalChange">
-          <option v-for="v in [5, 15, 30, 60]" :key="v" :value="v">{{ v }} {{ t('refresh.seconds') }}</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label class="switch">
-          <input type="checkbox" :checked="settings.pauseOnHidden" @change="(e) => { settings.pauseOnHidden = (e.target as HTMLInputElement).checked; refresh.setPauseOnHidden((e.target as HTMLInputElement).checked) }" />
-          <span>{{ t('refresh.pauseOnHidden') }}</span>
-        </label>
-      </div>
-      <div class="form-row">
-        <label class="switch">
-          <input type="checkbox" :checked="settings.alignToClock" @change="(e) => { settings.alignToClock = (e.target as HTMLInputElement).checked; refresh.setAlignToClock((e.target as HTMLInputElement).checked) }" />
-          <span>{{ t('refresh.alignToClock') }}</span>
-        </label>
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>AI 模型</h2>
-      <p class="small muted">支持任意 OpenAI 兼容接口。部署环境可配置 <code>AI_BASE_URL</code>、<code>AI_API_KEY</code>、<code>AI_MODEL</code>；服务端托管时 API Key 不会进入浏览器。</p>
-      <div v-if="aiStore.serverManaged" class="managed-banner small">
-        当前 AI 由服务端环境变量托管：{{ runtimeConfig.config.ai.model || aiStore.model || '未设置模型' }}
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">Base URL</label>
-        <input v-model="aiStore.baseUrl" type="text" :placeholder="EXTERNAL_ENDPOINTS.openai.baseUrl" class="grow" />
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">API Key</label>
-        <input v-model="aiStore.apiKey" type="password" :placeholder="aiStore.serverManaged ? '由服务端环境变量托管' : 'sk-...'" class="grow" />
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">模型</label>
-        <select v-model="aiStore.model" class="grow">
-          <option v-if="!aiStore.model && !allModels.length" value="">— 请先拉取列表 —</option>
-          <option v-for="m in allModels" :key="m.id" :value="m.id">{{ m.id }}</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <button class="btn primary" @click="saveAI">保存</button>
-        <button class="btn" :disabled="modelLoading" @click="refreshModels">
-          <span v-if="modelLoading" class="spinner"></span>
-          拉取模型列表
-        </button>
-        <span v-if="modelTestResult" class="test-result small" :class="modelTestResult.startsWith('✓') ? 'pos' : 'neg'">{{ modelTestResult }}</span>
-      </div>
-      <div class="form-row">
-        <label class="lbl small muted">Temperature</label>
-        <input v-model.number="aiStore.temperature" type="number" min="0" max="2" step="0.1" />
-        <label class="lbl small muted" style="margin-left: 12px">Max Tokens</label>
-        <input v-model.number="aiStore.maxTokens" type="number" min="100" max="32000" step="100" />
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>数据管理</h2>
-      <div class="actions">
-        <button class="btn" @click="exportFavorites">导出自选股</button>
-        <button class="btn" @click="exportAll">导出全部数据</button>
-        <button class="btn" @click="importAll">导入全部数据</button>
-        <button class="btn" @click="importFavorites">导入自选股</button>
-        <button class="btn" @click="clearCache">{{ t('settings.clearCache') }}</button>
-        <input ref="fileInput" type="file" accept="application/json" style="display:none" @change="onFileSelected" />
-        <input ref="allFileInput" type="file" accept="application/json" style="display:none" @change="onAllFileSelected" />
-      </div>
-      <div class="stats-row small muted">
-        <span>报价缓存：{{ quotes.quotes.size }} 个</span>
-        <span>自选股：{{ watchlist.items.length }} 只</span>
-        <span>持仓：{{ portfolio.holdings.length }} 条</span>
-      </div>
-    </section>
-
-    <section class="card section">
-      <h2>{{ t('settings.about') }}</h2>
-      <p class="small muted">{{ t('settings.aboutText') }}</p>
-    </section>
   </div>
 </template>
 
 <style scoped>
-.section { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); }
-.section h2 { font-size: var(--fs-lg); margin: 0; }
-.theme-options { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.radio-card {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: 10px 16px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); cursor: pointer; flex: 1; min-width: 140px;
-  transition: all var(--transition-fast);
-}
-.radio-card:hover { border-color: var(--color-border-strong); }
-.radio-card.active { background: var(--color-info-bg); border-color: var(--color-link); }
-.radio-card input { display: none; }
-.icon { font-size: 18px; }
-.form-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.form-row .grow { flex: 1; min-width: 200px; }
-.lbl { min-width: 100px; }
-.switch { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-.test-result { font-weight: 600; }
-.managed-banner {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-info-bg);
-  color: var(--color-info-text);
-}
-.pos { color: var(--color-up); }
-.neg { color: var(--color-down); }
-.actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.stats-row { display: flex; gap: var(--space-4); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
-.spinner {
-  display: inline-block; width: 10px; height: 10px;
-  border: 2px solid currentColor; border-right-color: transparent;
-  border-radius: 50%; animation: spin 0.8s linear infinite;
-  margin-right: 4px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+.settings-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding-bottom: var(--space-6);
 }
 
-.user-profile {
+.settings-page h1 {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.settings-section {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.section-header {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.user-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--color-info-bg);
-  color: var(--color-link);
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.section-icon {
+  font-size: 24px;
 }
 
-.user-name {
-  font-weight: 600;
+.section-header h3 {
+  margin: 0;
   font-size: var(--fs-base);
 }
 
-.user-id {
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.user-actions {
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-row label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.setting-row input[type="text"],
+.setting-row input[type="password"],
+.setting-row input[type="number"],
+.setting-row select {
+  flex: 1;
+  max-width: 280px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-size: var(--fs-sm);
+}
+
+.theme-options {
   display: flex;
   gap: var(--space-2);
+}
+
+.theme-options button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.theme-options button.active {
+  background: var(--color-info-bg);
+  border-color: var(--color-link);
+  color: var(--color-link);
+  font-weight: 600;
+}
+
+.setting-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
   flex-wrap: wrap;
 }
 
-.sync-status {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+.test-result,
+.status-msg {
   font-size: var(--fs-sm);
   font-weight: 600;
 }
 
+.managed-banner {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-info-bg);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-3);
+}
+
+/* 开关 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-border);
+  border-radius: 12px;
+  transition: 0.3s;
+}
+
+.slider:before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+input:checked + .slider {
+  background: var(--color-link);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* 统计 */
+.stats-row {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 环境变量 */
 .env-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .env-item {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  background: var(--color-bg-muted);
-  border-radius: var(--radius-md);
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.env-item:last-child {
+  border-bottom: none;
 }
 
 .env-label {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   color: var(--color-muted);
-  font-weight: 600;
 }
 
 .env-value {
   font-size: var(--fs-sm);
   font-weight: 600;
 }
+
+.pos { color: var(--color-up); }
+.neg { color: var(--color-down); }
 </style>
