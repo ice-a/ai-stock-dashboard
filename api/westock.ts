@@ -31,8 +31,12 @@ async function searchStocks(keyword: string): Promise<any[]> {
     const json = await response.json() as any
     const data = json?.QuotationCodeTable?.Data || []
     
+    // 使用 Classify 字段过滤，支持所有股票类型
     return data
-      .filter((item: any) => ['股票', 'ETF', 'AStock', 'HKStock', 'USStock'].includes(item.SecurityTypeName) || item.Classify === 'AStock')
+      .filter((item: any) => {
+        const classify = item.Classify || ''
+        return classify.includes('Stock') || classify.includes('ETF') || classify.includes('Index')
+      })
       .map((item: any) => {
         const code = item.Code
         const mktNum = Number(item.MktNum)
@@ -48,7 +52,7 @@ async function searchStocks(keyword: string): Promise<any[]> {
           symbol,
           name: item.Name,
           market,
-          type: item.SecurityTypeName,
+          type: item.Classify || '股票',
         }
       })
   } catch {
