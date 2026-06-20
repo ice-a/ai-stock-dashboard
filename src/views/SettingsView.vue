@@ -539,4 +539,73 @@ input:checked + .slider:before {
 
 .pos { color: var(--color-up); }
 .neg { color: var(--color-down); }
+
+@media (max-width: 640px) {
+  .settings-page h1 {
+    font-size: var(--fs-xl);
+    padding: var(--space-3) 0;
+  }
+  
+  .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  
+  .setting-row label {
+    font-size: var(--fs-sm);
+  }
+  
+  .setting-row input[type="text"],
+  .setting-row input[type="password"],
+  .setting-row input[type="number"],
+  .setting-row select {
+    max-width: 100%;
+    width: 100%;
+  }
+  
+  .theme-options {
+    flex-wrap: wrap;
+  }
+  
+  .theme-options button {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
+  }
+  
+  .setting-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .setting-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .stats-row {
+    justify-content: space-around;
+  }
+  
+  .env-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+}
+
+@media (max-width: 375px) {
+  .settings-section {
+    padding: var(--space-3);
+  }
+  
+  .section-header {
+    gap: var(--space-2);
+  }
+  
+  .section-icon {
+    font-size: 20px;
+  }
+}
 </style>

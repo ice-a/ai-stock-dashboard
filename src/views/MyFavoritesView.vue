@@ -406,4 +406,59 @@ function exportCSV() {
   margin-right: 4px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .page-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  
+  .page-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .toolbar {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  
+  .toolbar input,
+  .toolbar select {
+    width: 100%;
+  }
+  
+  .fav-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  
+  .quote-area {
+    text-align: left;
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+  
+  .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .fav-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 375px) {
+  .fav-card {
+    padding: var(--space-2);
+  }
+  
+  .price :first-child {
+    font-size: var(--fs-lg);
+  }
+}
 </style>

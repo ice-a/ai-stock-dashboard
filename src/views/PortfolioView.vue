@@ -629,16 +629,60 @@ input {
   .portfolio-head {
     align-items: flex-start;
     flex-direction: column;
+    gap: var(--space-3);
   }
-  .summary-grid,
+  
+  .head-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
   .form-grid,
   .table-row,
   .tx-row {
     grid-template-columns: 1fr;
   }
+  
   .form-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+  
+  .table-row {
+    padding: var(--space-3);
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    border-top: none;
+  }
+  
+  .tx-row {
+    padding: var(--space-3);
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    border-top: none;
+  }
+  
+  .dialog {
+    max-width: 100%;
+    margin: var(--space-2);
+    max-height: 85vh;
+  }
+}
+
+@media (max-width: 375px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .summary-card {
+    min-height: auto;
+    padding: var(--space-3);
   }
 }
 

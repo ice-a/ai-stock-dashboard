@@ -276,13 +276,43 @@ function goToStock(symbol: string) {
 .neg { color: var(--color-down); }
 
 @media (max-width: 640px) {
-  .top-bar { flex-direction: column; }
-  .indices-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .index-chip { padding-inline: 10px; }
-  .links-grid { grid-template-columns: 1fr; }
+  .top-bar { 
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  
+  .indices-grid { 
+    grid-template-columns: repeat(2, minmax(0, 1fr)); 
+  }
+  
+  .index-chip { 
+    padding: var(--space-2) var(--space-3);
+  }
+  
+  .links-grid { 
+    grid-template-columns: 1fr; 
+  }
+  
+  .link-card {
+    padding: var(--space-3);
+  }
+  
+  .link-icon {
+    font-size: 24px;
+  }
 }
 
 @media (max-width: 420px) {
-  .indices-grid { grid-template-columns: 1fr; }
+  .indices-grid { 
+    grid-template-columns: 1fr; 
+  }
+  
+  .hitokoto-bar {
+    padding: var(--space-2) var(--space-3);
+  }
+  
+  .hk-text {
+    font-size: var(--fs-sm);
+  }
 }
 </style>

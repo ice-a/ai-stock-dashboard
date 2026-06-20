@@ -9,6 +9,7 @@ import { useRefreshStore } from './stores/refresh'
 import { useWatchlistStore } from './stores/watchlist'
 import { useAutoRefresh } from './composables/useAutoRefresh'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import './styles/mobile.css'
 
 const quotesStore = useQuotesStore()
 const refreshStore = useRefreshStore()
@@ -16,6 +17,14 @@ const watchlistStore = useWatchlistStore()
 const route = useRoute()
 
 const isPublicPage = computed(() => route.meta?.public === true)
+const isMobile = ref(window.innerWidth <= 768)
+
+// 监听窗口大小变化
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth <= 768
+  })
+}
 
 const initialSymbols = computed(() => {
   return watchlistStore.items.map(item => item.symbol).slice(0, 100)
@@ -78,7 +87,7 @@ function handleRefresh() {
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'is-mobile': isMobile }">
     <WelcomeModal />
     <AppHeader v-if="!isPublicPage" @refresh="handleRefresh" />
     <div class="layout" :class="{ public: isPublicPage }">

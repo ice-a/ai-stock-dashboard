@@ -178,17 +178,41 @@ nav {
 
   nav {
     flex-direction: row;
+    justify-content: space-around;
     overflow-x: auto;
-    gap: 4px;
+    gap: 2px;
   }
 
   .nav-item {
+    flex-direction: column;
     flex-shrink: 0;
-    padding: 0 10px;
-    height: 36px;
-    font-size: 13px;
+    padding: var(--space-1) var(--space-2);
+    height: auto;
+    min-height: 56px;
+    font-size: 11px;
+    gap: 2px;
+  }
+  
+  .nav-item.active::before {
+    display: none; /* 移动端隐藏活跃指示器 */
   }
 
-  .ic { display: none; }
+  .ic { 
+    display: flex;
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  
+  .label {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 375px) {
+  .nav-item {
+    padding: var(--space-1);
+    min-width: 48px;
+  }
 }
 </style>

@@ -248,9 +248,25 @@ const marketStatuses = computed(() => {
 }
 
 @media (max-width: 640px) {
-  .subtitle { display: none; }
-  .user-chip { max-width: 72px; }
-  .hdr { padding: 0 var(--space-3); }
-  .title { font-size: var(--fs-md); }
+  .hdr {
+    padding: 0 var(--space-3);
+    height: 56px;
+  }
+  
+  .title { 
+    font-size: var(--fs-md); 
+  }
+  
+  .subtitle { 
+    display: none; 
+  }
+  
+  .user-chip { 
+    max-width: 72px; 
+  }
+  
+  .market-statuses {
+    display: none; /* 移动端隐藏市场状态 */
+  }
 }
 </style>

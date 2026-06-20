@@ -780,4 +780,94 @@ function handleLogout() {
 .actions-card .btn {
   flex: 1;
 }
+
+@media (max-width: 640px) {
+  .user-page {
+    max-width: 100%;
+    padding: 0 var(--space-2) 80px;
+  }
+  
+  .auth-hero {
+    padding: var(--space-4) 0 var(--space-3);
+  }
+  
+  .hero-icon {
+    font-size: 40px;
+  }
+  
+  .hero-content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-3);
+    margin-top: -30px;
+  }
+  
+  .avatar-large {
+    width: 64px;
+    height: 64px;
+  }
+  
+  .user-meta {
+    text-align: center;
+  }
+  
+  .quota-card,
+  .config-card,
+  .info-card,
+  .actions-card {
+    padding: var(--space-3);
+  }
+  
+  .config-actions {
+    flex-direction: column;
+  }
+  
+  .config-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .actions-card {
+    flex-direction: column;
+  }
+  
+  .actions-card .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .modal {
+    margin: var(--space-2);
+    max-height: 90vh;
+  }
+  
+  .modal-body {
+    padding: var(--space-3);
+  }
+  
+  .modal-footer {
+    padding: var(--space-3);
+    flex-direction: column;
+  }
+  
+  .modal-footer .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 375px) {
+  .user-page {
+    padding: 0 var(--space-1) 80px;
+  }
+  
+  .quota-number {
+    font-size: var(--fs-2xl);
+  }
+  
+  .quota-bar {
+    height: 4px;
+  }
+}
 </style>

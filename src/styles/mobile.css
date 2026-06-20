@@ -1,0 +1,173 @@
+/* 移动端适配全局样式 */
+
+/* 基础移动端样式 */
+@media (max-width: 768px) {
+  /* 全局字体大小调整 */
+  :root {
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-base: 15px;
+    --fs-md: 16px;
+    --fs-lg: 18px;
+    --fs-xl: 22px;
+    --fs-2xl: 26px;
+    --fs-3xl: 32px;
+    
+    /* 间距调整 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    
+    /* 布局调整 */
+    --header-height: 56px;
+    --sidebar-width: 0px;
+  }
+  
+  /* 页面容器 */
+  .page {
+    padding: var(--space-3);
+    padding-bottom: 80px; /* 为底部导航留空间 */
+  }
+  
+  /* 卡片样式 */
+  .card {
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+  }
+  
+  /* 按钮样式 */
+  .btn {
+    min-height: 44px; /* 触摸目标最小高度 */
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--fs-base);
+  }
+  
+  /* 输入框样式 */
+  input, select, textarea {
+    font-size: 16px; /* 防止 iOS 缩放 */
+    min-height: 44px;
+  }
+  
+  /* 表格响应式 */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* 表单布局 */
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .form-row label {
+    margin-bottom: var(--space-1);
+  }
+  
+  /* 网格布局 */
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 小屏手机 */
+@media (max-width: 375px) {
+  :root {
+    --fs-base: 14px;
+    --fs-lg: 16px;
+    --fs-xl: 20px;
+  }
+  
+  .page {
+    padding: var(--space-2);
+  }
+}
+
+/* 平板 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  :root {
+    --sidebar-width: 200px;
+  }
+}
+
+/* 桌面 */
+@media (min-width: 1025px) {
+  :root {
+    --sidebar-width: 240px;
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+  /* 增加触摸目标大小 */
+  .nav-item {
+    min-height: 44px;
+  }
+  
+  .btn {
+    min-height: 44px;
+  }
+  
+  /* 移除悬停效果 */
+  .hover-effect {
+    display: none;
+  }
+}
+
+/* 暗色模式适配 */
+@media (prefers-color-scheme: dark) {
+  /* 已在 tokens.css 中定义 */
+}
+
+/* 横屏适配 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .header {
+    height: 48px;
+  }
+  
+  .page {
+    padding-bottom: 60px;
+  }
+}
+
+/* 安全区域适配 */
+@supports (padding: max(0px)) {
+  .header {
+    padding-top: max(var(--space-2), env(safe-area-inset-top));
+  }
+  
+  .bottom-nav {
+    padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+  }
+}
+
+/* 打印样式 */
+@media print {
+  .header,
+  .sidebar,
+  .bottom-nav,
+  .no-print {
+    display: none !important;
+  }
+  
+  .page {
+    padding: 0;
+    margin: 0;
+  }
+  
+  .card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+}
