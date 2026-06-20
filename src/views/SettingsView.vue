@@ -541,6 +541,10 @@ input:checked + .slider:before {
 .neg { color: var(--color-down); }
 
 @media (max-width: 640px) {
+  .settings-page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .settings-page h1 {
     font-size: var(--fs-xl);
     padding: var(--space-3) 0;

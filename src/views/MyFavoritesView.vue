@@ -408,6 +408,10 @@ function exportCSV() {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .page-head {
     flex-direction: column;
     align-items: flex-start;

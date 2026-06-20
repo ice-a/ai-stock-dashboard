@@ -136,7 +136,7 @@ function handleRefresh() {
     flex-direction: column;
   }
   .main {
-    padding-bottom: 70px;
+    padding-bottom: calc(60px + var(--space-4)); /* 底部导航栏高度 + 间距 */
   }
 }
 </style>

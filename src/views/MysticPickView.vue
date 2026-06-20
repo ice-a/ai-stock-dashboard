@@ -838,4 +838,99 @@ function goToStock(symbol: string) {
     align-items: flex-start;
   }
 }
+
+@media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
+  .control-panel {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+  
+  .control-group {
+    width: 100%;
+  }
+  
+  .seg {
+    flex-wrap: wrap;
+  }
+  
+  .seg button {
+    flex: 1;
+    min-width: 60px;
+  }
+  
+  .method-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .pick-btn {
+    width: 100%;
+  }
+  
+  .result-layout {
+    gap: var(--space-3);
+  }
+  
+  .reading-panel,
+  .stock-panel,
+  .ai-panel {
+    padding: var(--space-3);
+  }
+  
+  .stock-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  
+  .price-box {
+    align-items: flex-start;
+  }
+  
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .info-sections {
+    grid-template-columns: 1fr;
+  }
+  
+  .mystic-animation {
+    padding: var(--space-3);
+    min-height: 150px;
+  }
+  
+  .tarot-card {
+    width: 80px;
+    height: 120px;
+  }
+  
+  .dice {
+    font-size: 36px;
+  }
+  
+  .astro-symbol {
+    font-size: 40px;
+  }
+}
+
+@media (max-width: 375px) {
+  .control-panel {
+    padding: var(--space-2);
+  }
+  
+  .method-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1);
+  }
+  
+  .method-btn {
+    padding: var(--space-2);
+    font-size: var(--fs-sm);
+  }
+}
 </style>

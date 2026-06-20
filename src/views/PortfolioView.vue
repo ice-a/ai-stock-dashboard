@@ -626,6 +626,10 @@ input {
 }
 
 @media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .portfolio-head {
     align-items: flex-start;
     flex-direction: column;

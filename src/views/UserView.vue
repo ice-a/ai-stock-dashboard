@@ -784,7 +784,7 @@ function handleLogout() {
 @media (max-width: 640px) {
   .user-page {
     max-width: 100%;
-    padding: 0 var(--space-2) 80px;
+    padding: 0 var(--space-2) calc(60px + var(--space-4));
   }
   
   .auth-hero {
@@ -859,7 +859,7 @@ function handleLogout() {
 
 @media (max-width: 375px) {
   .user-page {
-    padding: 0 var(--space-1) 80px;
+    padding: 0 var(--space-1) calc(60px + var(--space-4));
   }
   
   .quota-number {

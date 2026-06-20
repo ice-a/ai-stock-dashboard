@@ -276,6 +276,10 @@ function goToStock(symbol: string) {
 .neg { color: var(--color-down); }
 
 @media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .top-bar { 
     flex-direction: column;
     gap: var(--space-2);

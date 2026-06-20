@@ -979,6 +979,10 @@ const tabs = [
 .form-row input { flex: 1; min-width: 100px; }
 
 @media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .hero-main { 
     flex-direction: column;
     gap: var(--space-3);

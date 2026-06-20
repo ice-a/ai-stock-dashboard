@@ -331,22 +331,54 @@ function refreshPopular() {
 .flat { color: var(--color-flat); }
 
 @media (max-width: 640px) {
+  .page {
+    padding-bottom: calc(60px + var(--space-4));
+  }
+  
   .search-hero {
     align-items: flex-start;
     flex-direction: column;
   }
+  
   .search-box {
     grid-template-columns: auto 1fr;
   }
+  
   .search-box .btn {
     grid-column: 1 / -1;
   }
+  
   .result-row {
     align-items: flex-start;
     flex-direction: column;
+    padding: var(--space-3);
   }
+  
   .result-meta {
     justify-content: flex-start;
+  }
+  
+  .popular-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .popular-card {
+    min-height: auto;
+    padding: var(--space-3);
+  }
+}
+
+@media (max-width: 375px) {
+  .search-box input {
+    font-size: var(--fs-base);
+  }
+  
+  .popular-name {
+    font-size: var(--fs-sm);
+  }
+  
+  .price {
+    font-size: var(--fs-base);
   }
 }
 </style>

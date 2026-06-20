@@ -168,29 +168,47 @@ nav {
     position: fixed;
     top: auto;
     bottom: 0;
+    left: 0;
+    right: 0;
     height: auto;
     border-right: none;
     border-top: 1px solid var(--color-border);
-    padding: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     z-index: var(--z-sticky);
     background: var(--color-bg-elevated);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
   }
 
   nav {
+    display: flex;
     flex-direction: row;
     justify-content: space-around;
     overflow-x: auto;
     gap: 2px;
+    max-width: 100%;
   }
 
   .nav-item {
+    display: flex;
     flex-direction: column;
-    flex-shrink: 0;
-    padding: var(--space-1) var(--space-2);
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-1) var(--space-1);
     height: auto;
-    min-height: 56px;
-    font-size: 11px;
+    min-height: 52px;
+    font-size: 10px;
     gap: 2px;
+    text-decoration: none;
+    color: var(--color-muted);
+    transition: color var(--transition-fast);
+  }
+  
+  .nav-item.active {
+    color: var(--color-link);
+    background: transparent;
+    box-shadow: none;
   }
   
   .nav-item.active::before {
@@ -199,20 +217,39 @@ nav {
 
   .ic { 
     display: flex;
+    align-items: center;
+    justify-content: center;
     width: 24px;
     height: 24px;
-    font-size: 12px;
+    font-size: 14px;
+    border: none;
+    background: transparent;
+  }
+  
+  .nav-item.active .ic {
+    background: transparent;
+    border: none;
   }
   
   .label {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 }
 
 @media (max-width: 375px) {
   .nav-item {
-    padding: var(--space-1);
-    min-width: 48px;
+    font-size: 9px;
+    min-height: 48px;
+    padding: var(--space-1) 2px;
+  }
+  
+  .ic {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
   }
 }
 </style>
